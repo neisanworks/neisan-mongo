@@ -1,2 +1,2 @@
 # neisan-mongo
-JS/TS class-driven driver for MongoDB
+JS/TS class-driven MongoDB driver
