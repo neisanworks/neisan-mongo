@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
 import assert from "node:assert";
 import z from "zod/v4";
+import type { Data } from "../types";
 import { MongoClient } from "./client";
 import { MongoCollection } from "./collection";
 import { MongoDataBase } from "./database";
 import { Model } from "./model";
-
-type Data = Record<string, unknown>;
 
 test("MongoClient", async () => {
 	const UserSchema = z.object({
