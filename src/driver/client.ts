@@ -9,16 +9,14 @@ export class MongoClient {
 			writable: false,
 			configurable: false,
 			enumerable: false,
-			value: new mongo.MongoClient(
-				uri,
-				options ?? {
-					serverApi: {
-						version: mongo.ServerApiVersion.v1,
-						strict: true,
-						deprecationErrors: true,
-					},
+			value: new mongo.MongoClient(uri, {
+				serverApi: {
+					version: mongo.ServerApiVersion.v1,
+					strict: true,
+					deprecationErrors: true,
 				},
-			),
+				...options,
+			}),
 		});
 	}
 
