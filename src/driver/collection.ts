@@ -262,8 +262,7 @@ export class MongoCollection<
 				const conflict = await this.findOne({ [unique]: encoded[unique] } as Partial<
 					z.infer<Schema>
 				>);
-				if (conflict) {
-					console.log({ model, conflict, [unique]: encoded[unique] });
+				if (conflict && conflict._id !== model._id) {
 					return this.#uniqueFailure(unique);
 				}
 			}
