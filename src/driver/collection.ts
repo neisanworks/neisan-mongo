@@ -14,6 +14,7 @@ import type {
 	UpdateResult,
 } from "../types.js";
 import { FindCursor } from "./cursor.js";
+import { decode, encode } from "../utils.js";
 
 export class MongoCollection<
 	Schema extends z.ZodObject,
@@ -84,16 +85,16 @@ export class MongoCollection<
 		}
 
 		if (Array.isArray(item)) {
-			return item.map(this.encode);
+			return item.map(encode);
 		} else if (item instanceof Set) {
-			return { $$JSSet: Array.from(item).map(this.encode) };
+			return { $$JSSet: Array.from(item).map(encode) };
 		} else if (item instanceof Map) {
-			return { $$JSMap: Array.from(item).map(this.encode) };
+			return { $$JSMap: Array.from(item).map(encode) };
 		}
 
 		const entries: Array<[string, unknown]> = [];
 		for (const [key, value] of Object.entries(item)) {
-			entries.push([key, this.encode(value)]);
+			entries.push([key, encode(value)]);
 		}
 		return Object.fromEntries(entries);
 	}
@@ -108,7 +109,7 @@ export class MongoCollection<
 		}
 
 		if (Array.isArray(item)) {
-			return item.map(this.decode);
+			return item.map(decode);
 		}
 
 		const entries: Array<[string, unknown]> = [];
@@ -120,17 +121,17 @@ export class MongoCollection<
 
 			if (key === "$$JSSet") {
 				assert(Array.isArray(value));
-				return new Set(value.map(this.decode));
+				return new Set(value.map(decode));
 			} else if (key === "$$JSMap") {
 				assert(Array.isArray(value));
-				return new Map(value.map(this.decode));
+				return new Map(value.map(decode));
 			}
 
 			if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-				entries.push([key, this.decode(value)]);
+				entries.push([key, decode(value)]);
 			}
 
-			entries.push([key, this.decode(value)]);
+			entries.push([key, decode(value)]);
 		}
 		return Object.fromEntries(entries);
 	}
@@ -143,11 +144,10 @@ export class MongoCollection<
 		if (!parse.success) {
 			return this.#schemaFailure(parse.error);
 		}
-		const encoded = this.encode(parse.data);
+		const encoded = encode(parse.data);
 
 		for (const unique of this.unique) {
-			const query = { [unique]: encoded[unique] };
-			if (await this.collection.findOne(query)) {
+			if (await this.collection.findOne({ [unique]: encoded[unique] })) {
 				return this.#uniqueFailure(unique);
 			}
 		}
@@ -187,10 +187,10 @@ export class MongoCollection<
 		options?: mongo.FindOneOptions,
 	): Promise<Instance | null> {
 		if (typeof search === "object") {
-			const match = await this.collection.findOne(this.encode(search), options);
+			const match = await this.collection.findOne(encode(search), options);
 			if (match === null) return null;
 			try {
-				return new this.model(this.decode(match));
+				return new this.model(decode(match));
 			} catch {
 				return null;
 			}
@@ -253,16 +253,19 @@ export class MongoCollection<
 						? await this.findOne(search, options)
 						: await this.findOne(search, options);
 			if (model === null) {
-				return { acknowledged: false, errors: { general: "Document Not Found" } };
+				return {
+					acknowledged: false,
+					errors: { general: "Document Not Found" },
+				};
 			}
 
 			await updater(model);
-			const encoded = this.encode(model.toJSON());
+			const encoded = encode(model.toJSON());
 			for (const unique of this.unique) {
-				const conflict = await this.findOne({ [unique]: encoded[unique] } as Partial<
-					z.infer<Schema>
-				>);
-				if (conflict && conflict._id !== model._id) {
+				const conflict = await this.findOne({
+					[unique]: encoded[unique],
+				} as Partial<z.infer<Schema>>);
+				if (conflict && !sameID(model, conflict)) {
 					return this.#uniqueFailure(unique);
 				}
 			}
@@ -272,7 +275,9 @@ export class MongoCollection<
 				{ $set: encoded },
 				{ ...options },
 			);
-			if (updated === null) return this.#rejectFailure();
+			if (updated === null) {
+				return this.#rejectFailure();
+			}
 
 			return { acknowledged: true, model };
 		} catch (error) {
@@ -377,13 +382,13 @@ export class MongoCollection<
 				await updater(model);
 				if (typeof update === "function") {
 					for (const unique of this.unique) {
-						const encoded = this.encode({ [unique]: model[unique] });
+						const encoded = encode({ [unique]: model[unique] });
 						if (await this.findOne(encoded)) {
 							return this.#uniqueFailure(unique);
 						}
 					}
 				}
-				const result = await this.updateOne(model._id, this.encode(model.toJSON()));
+				const result = await this.updateOne(model._id, encode(model.toJSON()));
 				if (result.acknowledged) models.push(model);
 			} catch (error) {
 				if (error instanceof z.ZodError) {
@@ -476,4 +481,11 @@ export class MongoCollection<
 	get writeConcern(): mongo.WriteConcern | undefined {
 		return this.collection.writeConcern;
 	}
+}
+
+function sameID<Schema extends z.ZodObject, Instance extends CollectionModel<Schema>>(
+	modelA: Instance,
+	modelB: Instance,
+): boolean {
+	return modelA._id.toString() === modelB._id.toString();
 }

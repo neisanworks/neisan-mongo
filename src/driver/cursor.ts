@@ -2,6 +2,7 @@ import type mongo from "mongodb";
 import type z from "zod/v4";
 import type { CollectionModel, ModelConstructor, QueryPredicate } from "../types.js";
 import type { MongoCollection } from "./collection.js";
+import { decode } from "../utils.js";
 
 export type CursorCloseOptions = { timeoutMS?: number };
 
@@ -56,7 +57,7 @@ export class FindCursor<
 	async next(): Promise<IteratorResult<Instance>> {
 		let next: IteratorResult<any> = await this.cursor.next();
 		while (next) {
-			const data = this.collection.decode(next);
+			const data = decode(next);
 			next = await this.cursor.next();
 			try {
 				const value = new this.model(data);
