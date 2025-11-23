@@ -75,67 +75,6 @@ export class MongoCollection<
 		};
 	}
 
-	encode(item: any): any {
-		if (
-			item instanceof mongo.ObjectId ||
-			typeof item !== "object" ||
-			(item === null && !Array.isArray(item))
-		) {
-			return item;
-		}
-
-		if (Array.isArray(item)) {
-			return item.map(encode);
-		} else if (item instanceof Set) {
-			return { $$JSSet: Array.from(item).map(encode) };
-		} else if (item instanceof Map) {
-			return { $$JSMap: Array.from(item).map(encode) };
-		}
-
-		const entries: Array<[string, unknown]> = [];
-		for (const [key, value] of Object.entries(item)) {
-			entries.push([key, encode(value)]);
-		}
-		return Object.fromEntries(entries);
-	}
-
-	decode(item: any): any {
-		if (
-			item instanceof mongo.ObjectId ||
-			typeof item !== "object" ||
-			(item === null && !Array.isArray(item))
-		) {
-			return item;
-		}
-
-		if (Array.isArray(item)) {
-			return item.map(decode);
-		}
-
-		const entries: Array<[string, unknown]> = [];
-		for (const [key, value] of Object.entries(item)) {
-			if (key === "_id") {
-				entries.push([key, value]);
-				continue;
-			}
-
-			if (key === "$$JSSet") {
-				assert(Array.isArray(value));
-				return new Set(value.map(decode));
-			} else if (key === "$$JSMap") {
-				assert(Array.isArray(value));
-				return new Map(value.map(decode));
-			}
-
-			if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-				entries.push([key, decode(value)]);
-			}
-
-			entries.push([key, decode(value)]);
-		}
-		return Object.fromEntries(entries);
-	}
-
 	async insert(
 		doc: z.core.input<Schema>,
 		options?: mongo.InsertOneOptions,

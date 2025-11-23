@@ -2,7 +2,7 @@ import type mongo from "mongodb";
 import type z from "zod/v4";
 import type { CollectionModel, ModelConstructor, QueryPredicate } from "../types.js";
 import type { MongoCollection } from "./collection.js";
-import { decode } from "../utils.js";
+import { decode, encode } from "../utils.js";
 
 export type CursorCloseOptions = { timeoutMS?: number };
 
@@ -26,7 +26,7 @@ export class FindCursor<
 		options?: mongo.FindOptions,
 	) {
 		this.collection = collection;
-		this.query = typeof search === "object" ? collection.encode(search) : {};
+		this.query = typeof search === "object" ? encode(search) : {};
 		this.search = search;
 		this.options = options;
 		this.cursor = collection.collection.find(this.query, options);
