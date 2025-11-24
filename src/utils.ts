@@ -22,7 +22,7 @@ export function encode(item: unknown): any {
 	}
 
 	if (item instanceof Date) {
-		return { _JSDate: item.toISOString() };
+		return { _JSDate: item.toLocaleString() };
 	}
 
 	const entries: Array<[string, unknown]> = [];

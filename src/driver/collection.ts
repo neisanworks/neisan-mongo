@@ -1,4 +1,3 @@
-import assert from "node:assert";
 import mongo from "mongodb";
 import z from "zod/v4";
 import type {
@@ -13,8 +12,8 @@ import type {
 	UpdateManyResult,
 	UpdateResult,
 } from "../types.js";
-import { FindCursor } from "./cursor.js";
 import { decode, encode } from "../utils.js";
+import { FindCursor } from "./cursor.js";
 
 export class MongoCollection<
 	Schema extends z.ZodObject,
