@@ -13,16 +13,16 @@ export function encode(item: unknown): any {
 
 	if (item instanceof Set) {
 		const encoded = Array.from(item).map(encode);
-		return { $$JSSet: encoded };
+		return { _JSSet: encoded };
 	}
 
 	if (item instanceof Map) {
 		const encoded = Array.from(item).map(encode);
-		return { $$JSMap: encoded };
+		return { _JSMap: encoded };
 	}
 
 	if (item instanceof Date) {
-		return { $$JSDate: item.toISOString() };
+		return { _JSDate: item.toISOString() };
 	}
 
 	const entries: Array<[string, unknown]> = [];
@@ -49,15 +49,15 @@ export function decode(item: unknown): any {
 			continue;
 		}
 
-		if (key === "$$JSSet") {
+		if (key === "_JSSet") {
 			assert(Array.isArray(value));
 			const set = new Set(value.map(decode));
 			return set;
-		} else if (key === "$$JSMap") {
+		} else if (key === "_JSMap") {
 			assert(Array.isArray(value));
 			const map = new Map(value.map(decode));
 			return map;
-		} else if (key === "$$JSDate") {
+		} else if (key === "_JSDate") {
 			assert(typeof value === "string");
 			return new Date(value);
 		}

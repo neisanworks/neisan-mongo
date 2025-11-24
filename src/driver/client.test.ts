@@ -15,6 +15,7 @@ test("MongoClient", async () => {
 			.regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/),
 		attempts: z.number().min(0, "Must Be Greater Than or Equal To 0").default(0),
 		teams: z.set(z.number()).default(new Set()),
+		edited: z.coerce.date().default(() => new Date()),
 	});
 	type UserSchema = typeof UserSchema;
 
@@ -23,6 +24,7 @@ test("MongoClient", async () => {
 		password!: string;
 		attempts: number = 0;
 		teams!: Set<number>;
+		edited!: Date;
 
 		constructor(data: Data) {
 			super(UserSchema);
