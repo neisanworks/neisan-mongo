@@ -1,8 +1,8 @@
 import type mongo from "mongodb";
 import type z from "zod/v4";
 import type { CollectionModel, ModelConstructor, QueryPredicate } from "../types.js";
-import type { MongoCollection } from "./collection.js";
 import { decode, encode } from "../utils.js";
+import type { MongoCollection } from "./collection.js";
 
 export type CursorCloseOptions = { timeoutMS?: number };
 

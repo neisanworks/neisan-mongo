@@ -1,18 +1,27 @@
 import type mongo from "mongodb";
 import type z from "zod/v4";
 
+// Utility Types
+export type MaybePromise<T> = T | Promise<T>;
 export type Prettier<T extends object> = { [K in keyof T]: T[K] } & {};
 
+// Model Types
 export type Data = Record<string, unknown>;
+export type JSONData<Schema extends z.ZodObject> = Prettier<
+	z.infer<Schema> & { _id: string }
+>;
+export type HydratedData<Schema extends z.ZodObject> = Prettier<
+	z.infer<Schema> & { _id: mongo.ObjectId }
+>;
 export type CollectionModel<Schema extends z.ZodObject> = {
-	_id: mongo.ObjectId;
 	toJSON(): z.infer<Schema>;
-} & z.core.output<Schema>;
+} & z.infer<Schema> & { _id: mongo.ObjectId };
 export type ModelConstructor<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
 > = new (data: Data) => Instance;
 
+// Collection Types
 export type CollectionParameters<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
@@ -21,14 +30,16 @@ export type CollectionParameters<
 		name: string;
 		schema: Schema;
 		model: ModelConstructor<Schema, Instance>;
-		unique?: Array<keyof Schema["shape"]>;
+		uniques?: Array<keyof z.infer<Schema>>;
+		indexes?: Array<SortParameters<Schema>>;
 	}
 >;
-
 export type SchemaError<Schema extends z.ZodObject> = Partial<
 	Record<keyof z.infer<Schema>, string>
 >;
-
+export type InsertRecord<Schema extends z.ZodObject> = Prettier<
+	Omit<z.core.input<Schema>, "_id">
+>;
 export type InsertResult<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
@@ -73,4 +84,13 @@ export type QueryPredicate<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
 > = (model: Instance) => boolean | Promise<boolean>;
+
+// Cursor Types
+export type CursorCloseOptions = { timeoutMS?: number };
+export type SortParameters<Schema extends z.ZodObject> = {
+	[key in keyof z.infer<Schema>]?: -1 | 1;
+};
+export type Index<Schema extends z.ZodObject> = {
+	[key in keyof z.infer<Schema>]?: -1 | 1;
+};
 export type CountOptions = Prettier<mongo.CountDocumentsOptions & mongo.Abortable>;
