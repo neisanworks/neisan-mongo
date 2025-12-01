@@ -267,6 +267,28 @@ class MongoCollection<
 		await this.collection.dropIndex(name, options);
 	}
 
+	async exists(
+		id: mongo.ObjectId,
+		options?: mongo.FindOneOptions
+	): Promise<boolean>;
+	async exists(
+		filter: Partial<z.infer<Schema>>,
+		options?: mongo.FindOneOptions,
+	): Promise<boolean>;
+	async exists(
+		predicate: QueryPredicate<Schema, Instance>,
+		options?: mongo.FindOneOptions,
+	): Promise<boolean>;
+	async exists(
+		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		options?: mongo.FindOneOptions,
+	): Promise<boolean> {
+		if (search instanceof mongo.ObjectId) {
+			return (await this.findOne(search, options)) !== null;
+		}
+		return this.find(search, options).hasNext()
+	}
+
 	/**
 	 * Creates a cursor for a query that can be used to iterate over results from the database.
 	 * @param search {Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>} The parameters for the cursor query.

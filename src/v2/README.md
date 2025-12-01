@@ -1,18 +1,44 @@
 # @neisanworks/neisan-mongo/v2
 
-*Some Descriptions Goes Here*
+A schema-safe, Zod-powered MongoDB driver with class-modeling, functional querying, native async iteration, and built-in validation for unique constraints.
+
+---
+
+## Table of Contents
+- [Quick Start](#quick-start)
+- [Core Concepts](#core-concepts)
+- [Why Use `@neisanworks/neisan-mongo/v2`](#why-use-neisanworksneisan-mongov2)
+- [Data Pipeline](#data-pipeline)
+- [Collection Methods](#collection-methods)
+- [Cursor Methods](#cursor-methods)
+- [Relationships (Joins)](#relationships-joins)
+- [Contributing](#contributing)
+
+---
 
 ## Quick Start
+
+[Back to Top](#table-of-contents)
 
 ### 1. Install
 
 ```bash
-bun add @neisanworks/neisan-mongo
-# or
-npm install @neisanworks/neisan-mongo
-# or
-pnpm add @neisanworks/neisan-mongo
+# GitHub Packages Install
+npm install @neisanworks/neisan-mongo --registry=https://npm.pkg.github.com
+
+# or, with bun / pnpm configured for GitHub registry
+bun add @neisanworks/neisan-mongo --registry=https://npm.pkg.github.com
+pnpm add @neisanworks/neisan-mongo --registry=https://npm.pkg.github.com
 ```
+
+**Note:** `@neisanworks/neisan-mongo` is distributed via GitHub Packages.
+Ensure your `.npmrc` includes the following line:
+
+```npmrc
+@neisanworks:registry=https://npm.pkg.github.com
+```
+
+and that you’ve configured an access token with `read:packages` scope.
 
 ### 2. Define Your Collection Model
 
@@ -113,6 +139,8 @@ Using `@neisanworks/neisan-mongo/v2` is that easy!
 
 ## Core Concepts
 
+[Back to Top](#table-of-contents)
+
 - Schema: Define shape and validation using `zod/v4`
 - Model: Extends `Model` to use methods and virtual properties
 - Collection: `db.collection({ name, model, schema })` creates a type-safe interface for a MongoDB collection
@@ -121,11 +149,59 @@ Using `@neisanworks/neisan-mongo/v2` is that easy!
 
 ---
 
+## Why Use `@neisanworks/neisan-mongo/v2`
+
+[Back to Top](#table-of-contents)
+
+| Feature                     | **neisan-mongo**                                                               | **MongoDB Driver**                                               | **Mongoose**                                    | **ZodMongo**                                                          |
+| :-------------------------- | :----------------------------------------------------------------------------- | :--------------------------------------------------------------- | :---------------------------------------------- | :-------------------------------------------------------------------- |
+| **Validation**              | ✅ Built-in with Zod (`zod/v4`) on insert/update                                | ❌ None — manual validation required                              | ⚠️ Custom schema layer (Mongoose schema system) | ✅ Zod-based                                                           |
+| **Type Inference**          | ✅ Full compile-time inference via Zod                                          | ❌ None — plain JS objects                                        | ⚠️ Partial via TypeScript typings               | ✅ Full via Zod                                                        |
+| **Schema Enforcement**      | ✅ Required at collection level                                                 | ❌ Optional (no enforcement)                                      | ✅ Required                                      | ✅ Required                                                            |
+| **Query Style**             | ✅ Functional + Declarative (`filter` or `(model) => …`)                        | ⚙️ Imperative (raw MongoDB queries)                              | ⚙️ Declarative                                  | ⚙️ Declarative                                                        |
+| **Cursor API**              | ✅ Async iterable, functional (`map`, `forEach`, `toArray`)                     | ⚙️ Low-level async iterator                                      | ⚠️ Basic cursor wrapping                        | ⚠️ Basic cursor                                                       |
+| **Unique Handling**         | ✅ Schema-defined uniqueness checks + error feedback                            | ❌ Manual index enforcement only                                  | ✅ Index-based                                   | ⚠️ Manual                                                             |
+| **Transform / Projection**  | ✅ `transformOne`, `transformMany`, and cursor `.map()`                         | ⚙️ Manual projection                                             | ⚙️ Limited                                      | ✅ Functional                                                          |
+| **Error Handling**          | ✅ Structured `{ acknowledged, errors }` results                                | ❌ Exceptions only                                                | ⚙️ Error objects / exceptions                   | ⚙️ Partial                                                            |
+| **Transactions / Bulk Ops** | ⚙️ Planned / via raw driver                                                    | ✅ Fully supported                                                | ✅ Supported                                     | ⚙️ Limited                                                            |
+| **Learning Curve**          | ⭐ Moderate — functional yet high-level                                         | 🚧 Steep — low-level and verbose                                 | ⚙️ Moderate                                     | ⭐ Easy                                                                |
+| **Best Use Case**           | When you want **type-safe, validated MongoDB access** with minimal boilerplate | When you need **full control and fine-grained MongoDB commands** | When you need a **traditional ODM**             | When you want **Zod-validated collections without full ODM overhead** |
+
+
+---
+
+## Data Pipeline
+
+[Back to Top](#table-of-contents)
+
+### Driver
+
+```mermaid
+graph LR
+A[MongoClient] --> B[MongoDatabase] --> C[MongoCollection]
+```
+
+### Insertion
+
+```mermaid
+graph LR
+A[Server] --> B[Document] --> |validation| C[MongoCollection]
+```
+### Transactions
+
+```mermaid
+graph LR
+A[Server] --> |query| B[MongoCollection] --> C[Model Instance] --> |operation| B --> A
+```
+
 ## Collection Methods
+
+[Back to Top](#table-of-contents)
 
 `neisan-mongo` supports a range of methods for querying, updating, and transforming data
 
-### Insert Method
+<details>
+<summary><strong>Insert Method</strong></summary>
 
 - `insert`: creates a new record and returns it
 
@@ -148,8 +224,10 @@ const insert = await Users.insert({
 ```
 
 **Note:** If the values of unique keys exist in another record, the insertion will fail.
+</details>
 
-### Find Methods
+<details>
+<summary><strong>Find Methods</strong></summary>
 
 - `findOne`: fetch a record from the collection
 
@@ -166,7 +244,7 @@ const user = await Users.findOne((user) => {
     return user.email === identifier || user.username === identifier
 })
 
-// Failure Output: null
+// Failure Output: null if no model matches query
 
 // Success Output: UserModel
 ```
@@ -182,7 +260,7 @@ const users = await Users.findMany({ attempts: 0 })
 // Fetch via predicate
 const users = await Users.findMany((user) => user.locked)
 
-// Failure Output: null
+// Failure Output: null if no models matches query
 
 // Success Output: Array<UserModel>
 ```
@@ -207,8 +285,10 @@ for await (const user of cursor) {
 
 // Output: FindCursor<Schema, Instance, T>
 ```
+</details>
 
-### Transform Methods
+<details>
+<summary><strong>Transform Methods</strong></summary>
 
 - `transformOne`: transform a record from the collection
 
@@ -235,7 +315,7 @@ const update = await Users.transformOne(
     }
 )
 
-// Failure Output: null if no record was found
+// Failure Output: null if no model matches query
 
 // Success Output: the transformed data
 ```
@@ -258,12 +338,14 @@ const update = await Users.transformMany(
     }
 )
 
-// Failure Output: null if no records matched the query
+// Failure Output: null if no models matches query
 
 // Success Output: an array of the transformed data
 ```
+</details>
 
-### Update Methods
+<details>
+<summary><strong>Update Methods</strong></summary>
 
 - `updateOne`: update a record in the collection
 
@@ -320,7 +402,7 @@ const update = await Users.updateOne(
 //          For a more dynamic query, use a predicate.
 const update = await Users.updateMany({ attempts: 3 }, { attempts: 0 })
 // or, using update function
-const update = await Users.updateMany({ atempts: 3 }, (user) => {
+const update = await Users.updateMany({ attempts: 3 }, (user) => {
     user.attempts++
 })
 
@@ -346,8 +428,10 @@ const update = await Users.updateMany(
 ```
 
 **Note:** If the values of unique keys exist in another record, the insertion will fail.
+</details>
 
-### Delete Methods
+<details>
+<summary><strong>Delete Methods</strong></summary>
 
 - `deleteOne`: delete a record from the collection
 
@@ -365,7 +449,7 @@ const deleted = await Users.deleteOne((user) => {
     return user.email === identifier || user.username === identifier
 })
 
-// Failure Output: null in none were deleted
+// Failure Output: null if no model matches query
 
 // Success Output: UserModel
 ```
@@ -381,16 +465,23 @@ const deleted = await Users.deleteMany({ attempts: 3 })
 // Delete via predicate
 const deleted = await Users.deleteMany((user) => user.locked)
 
-// Failure Output: null if none were deleted
+// Failure Output: null if no models matches query
 
 // Success Output: Array<UserModel>
 ```
+</details>
 
-### Additional Methods
+<details>
+<summary><strong>Additional Methods</strong></summary>
 
 - `count`: return an exact count of models matching the query
 
 ```ts
+// Count, using filter
+// Note:    Filter matches only models with the exact key-value pairs passed.
+//          For a more dynamic query, use a predicate.
+const locked = await Users.count({ attempts: 3 })
+// or, using predicate
 const locked = await Users.count((user) => user.locked)
 
 // Output: the exact count of locked users
@@ -420,10 +511,28 @@ const userEmailIndex = await Users.createIndex({ email: 1 });
 await Users.dropIndex(userEmailIndex);
 ```
 
+- `exists`: checks if a record exists
+
+```ts
+// Check existence, using filter
+// Note:    Filter matches only models with the exact key-value pairs passed.
+//          For a more dynamic query, use a predicate.
+const locked = await Users.exists({ attempts: 3 })
+// or, using predicate
+const locked = await Users.exists((user) => user.locked)
+
+// Output: Promise<boolean>, representing whether a record matches query
+```
+</details>
+
 ---
 
-
 ## Cursor Methods
+
+[Back to Top](#table-of-contents)
+
+<details>
+<summary><strong>clone</strong></summary>
 
 - `clone`: create a new uninitialized copy of the cursor
 
@@ -437,6 +546,10 @@ for await (const user of cursor) {
 const clone = cursor.clone()
 // clone is re-initialized
 ```
+</details>
+
+<details>
+<summary><strong>close</strong></summary>
 
 - `close`: free any client-side resources used by the cursor
 
@@ -444,6 +557,10 @@ const clone = cursor.clone()
 const cursor = Users.find((user) => user.locked);
 await cursor.close();
 ```
+</details>
+
+<details>
+<summary><strong>count</strong></summary>
 
 - `count`: return an exact count of models matching the query
 
@@ -453,6 +570,10 @@ const locked = cursor.count()
 
 // Output: the exact count of locked users
 ```
+</details>
+
+<details>
+<summary><strong>hasNext</strong></summary>
 
 - `hasNext`: whether the cursor has a next result
 
@@ -464,6 +585,10 @@ while (await cursor.hasNext()) {
 
 // Output: Promise<boolean>
 ```
+</details>
+
+<details>
+<summary><strong>hint</strong></summary>
 
 - `hint`: set a hint for the cursor
 
@@ -472,6 +597,10 @@ const cursor = Users.find((user) => user.locked).hint({ attempts: 1 })
 
 // Output: FindCursor<Schema, Instance, T> with hint applied
 ```
+</details>
+
+<details>
+<summary><strong>limit</strong></summary>
 
 - `limit`: set a limit for the cursor
 
@@ -480,6 +609,10 @@ const cursor = Users.find((user) => user.locked).limit(5)
 
 // Output: FindCursor<Schema, Instance, T> that will yield no more than 5 UserModels
 ```
+</details>
+
+<details>
+<summary><strong>map</strong></summary>
 
 - `map`: apply a transformation on all models yielded by the cursor
 
@@ -490,6 +623,10 @@ const cursor = Users.find((user) => user.locked).map((user) => (
 
 // Output: FindCursor<Schema, Instance, T> that will yield Record<'id' | 'username', string>
 ```
+</details>
+
+<details>
+<summary><strong>next</strong></summary>
 
 - `next`: fetch the next model from the cursor
 
@@ -501,6 +638,10 @@ while (await cursor.hasNext()) {
 
 // Output: { done: false, value: UserModel } | { done: true, value: undefined }
 ```
+</details>
+
+<details>
+<summary><strong>rewind</strong></summary>
 
 - `rewind`: rewind the cursor to its initialized state
 
@@ -513,6 +654,10 @@ for await (const user of cursor) {
 cursor.rewind()
 // cursor is re-initialized
 ```
+</details>
+
+<details>
+<summary><strong>skip</strong></summary>
 
 - `skip`: set the skip for the cursor
 
@@ -521,6 +666,10 @@ const cursor = Users.find((user) => user.locked).skip(5)
 
 // Output: FindCursor<Schema, Instance, T> that will skip the first 5 UserModels
 ```
+</details>
+
+<details>
+<summary><strong>sort</strong></summary>
 
 - `sort`: set the sort order of the cursor
 
@@ -531,6 +680,10 @@ const cursor = Users.find((user) => user.locked).sort({ attempts: 1 })
 
 // Output: FindCursor<Schema, Instance, T> that will sort the users by attempts in ascending order
 ```
+</details>
+
+<details>
+<summary><strong>toArray</strong></summary>
 
 - `toArray`: fetch an array of all models matching the query
 
@@ -545,12 +698,16 @@ const cursor = await Users.find((user) => user.locked).toArray()
 
 // Output: Array<UserModel>, or null if no matches
 ```
+</details>
+
 
 ---
 
 ## Relationships (Joins)
 
-Though collections do not share relationships, the behavior of relationships can be mimiced
+[Back to Top](#table-of-contents)
+
+Though collections do not share relationships, the behavior of relationships can be mimicked
 
 ```ts
 const message = await Users.transformOne(
@@ -567,9 +724,16 @@ const message = await Users.transformOne(
 ---
 
 ## Contributing
+
+[Back to Top](#table-of-contents)
+
 Found a bug or have an idea? Open an issue or PR.
 
 ---
 
 ## License
-MIT — © 2025 neisanworks
+
+MIT @neisanworks
+
+![GitHub package version](https://img.shields.io/github/package-json/v/neisanworks/neisan-mongo?filename=package.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
