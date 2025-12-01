@@ -17,7 +17,7 @@ import type {
 	UpdateManyResult,
 	UpdateResult,
 } from "../types.js";
-import { decode, encode } from "../utils.js";
+import { decode, encode, changes } from "../utils.js";
 
 class MongoCollection<
 	Schema extends z.ZodObject,
@@ -26,12 +26,10 @@ class MongoCollection<
 	readonly collection!: mongo.Collection;
 	readonly model!: ModelConstructor<Schema, Instance>;
 	private readonly schema: Schema;
-	private readonly uniques: Set<keyof z.core.output<Schema>>;
 
 	constructor(db: mongo.Db, params: CollectionParameters<Schema, Instance>) {
 		const name = params.name;
 		this.schema = params.schema;
-		this.uniques = new Set(params.uniques);
 
 		Object.defineProperty(this, "collection", {
 			writable: false,
@@ -45,6 +43,10 @@ class MongoCollection<
 			enumerable: false,
 			value: params.model,
 		});
+
+		for (const unique of Array.from(new Set(params.uniques))) {
+			this.collection.createIndex({ [unique]: 1 }, { unique: true, name: unique });
+		}
 	}
 
 	get collectionName(): string {
@@ -85,7 +87,7 @@ class MongoCollection<
 
 	/**
 	 * Returns the exact count of models matching the filter.
-	 * @param filter {Partial<z.infer<Schema>> | undefined} The filter to find matching models.
+	 * @param filter {Data | undefined} The filter to find matching models.
 	 * @param options {CountOptions | undefined} Optional settings for the command.
 	 * @note
 	 * Filter matches only models with the exact key-value pairs passed.
@@ -93,7 +95,7 @@ class MongoCollection<
 	 * @example
 	 * const comments = await PostComments.count({ parent: <parent-identifier> })
 	 */
-	async count(filter?: Partial<z.infer<Schema>>, options?: CountOptions): Promise<number>;
+	async count(filter?: Data, options?: CountOptions): Promise<number>;
 	/**
 	 * Returns the exact count of models matching the predicate.
 	 * @param predicate {QueryPredicate<Schema, Instance> | undefined} The predicate to find matching models.
@@ -106,7 +108,7 @@ class MongoCollection<
 		options?: CountOptions,
 	): Promise<number>;
 	async count(
-		search?: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search?: Data | QueryPredicate<Schema, Instance>,
 		options?: CountOptions,
 	): Promise<number> {
 		return this.find(search, options).count();
@@ -126,7 +128,7 @@ class MongoCollection<
 
 	/**
 	 * Deletes any model that matching the filter from this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find matching models.
+	 * @param filter {Data} The filter to find matching models.
 	 * @param options {mongo.FindOptions | undefined} Optional settings for the command.
 	 * @note
 	 * Filter matches only models with the exact key-value pairs passed.
@@ -135,7 +137,7 @@ class MongoCollection<
 	 * const comments = await PostComments.deleteMany({ parent: <parent-identifier> })
 	 */
 	async deleteMany(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		options?: mongo.FindOptions,
 	): Promise<Array<Instance> | null>;
 	/**
@@ -150,7 +152,7 @@ class MongoCollection<
 		options?: mongo.FindOptions,
 	): Promise<Array<Instance> | null>;
 	async deleteMany(
-		search: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.DeleteOptions,
 	): Promise<Array<Instance> | null> {
 		const models: Array<Instance> = [];
@@ -174,7 +176,7 @@ class MongoCollection<
 	): Promise<Instance | null>;
 	/**
 	 * Deletes the first model to match the filter from this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find the model to delete.
+	 * @param filter {Data} The filter to find the model to delete.
 	 * @param options {mongo.DeleteOptions | undefined} Optional settings for the command.
 	 * @return {Instance | null} The deleted model, or `null` if no models match the filter.
 	 * @note
@@ -183,10 +185,7 @@ class MongoCollection<
 	 * @example
 	 * const user = await Users.deleteOne({ email: 'email@email.com' })
 	 */
-	async deleteOne(
-		filter: Partial<z.infer<Schema>>,
-		options?: mongo.DeleteOptions,
-	): Promise<Instance | null>;
+	async deleteOne(filter: Data, options?: mongo.DeleteOptions): Promise<Instance | null>;
 	/**
 	 * Deletes the first model to match the predicate from this collection.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find the model to delete.
@@ -200,7 +199,7 @@ class MongoCollection<
 		options?: mongo.DeleteOptions,
 	): Promise<Instance | null>;
 	async deleteOne(
-		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.DeleteOptions,
 	): Promise<Instance | null> {
 		let model: Instance | null;
@@ -263,7 +262,7 @@ class MongoCollection<
 	async exists(id: mongo.ObjectId, options?: mongo.FindOneOptions): Promise<boolean>;
 	/**
 	 * Checks if a record exists in this collection.
-	 * @param filter {Partial<z.infer<Schema>>} A filter to query for
+	 * @param filter {Data} A filter to query for
 	 * @param options {mongo.FindOneOptions | undefined} Optional settings for the command.
 	 * @returns {Promise<boolean>} A boolean, representing whether the record exists.
 	 * @note
@@ -272,10 +271,7 @@ class MongoCollection<
 	 * @example
 	 * const exists = await Users.exists({ email: "<email>" })
 	 */
-	async exists(
-		filter: Partial<z.infer<Schema>>,
-		options?: mongo.FindOneOptions,
-	): Promise<boolean>;
+	async exists(filter: Data, options?: mongo.FindOneOptions): Promise<boolean>;
 	/**
 	 * Checks if a record exists in this collection.
 	 * @param predicate {QueryPredicate<Schema, Instance>} A predicate to match against.
@@ -289,7 +285,7 @@ class MongoCollection<
 		options?: mongo.FindOneOptions,
 	): Promise<boolean>;
 	async exists(
-		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOneOptions,
 	): Promise<boolean> {
 		if (search instanceof mongo.ObjectId) {
@@ -300,7 +296,7 @@ class MongoCollection<
 
 	/**
 	 * Creates a cursor for a query that can be used to iterate over results from the database.
-	 * @param search {Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>} The parameters for the cursor query.
+	 * @param search {Data | QueryPredicate<Schema, Instance>} The parameters for the cursor query.
 	 * @param options {mongo.FindOptions} Optional settings for the command.
 	 * @return {FindCursor<Schema, Instance>} A FindCursor for the matching models.
 	 * @example
@@ -310,7 +306,7 @@ class MongoCollection<
 	 * }
 	 */
 	find(
-		search?: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search?: Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOptions,
 	): FindCursor<Schema, Instance> {
 		return new FindCursor(this, search, options);
@@ -328,7 +324,7 @@ class MongoCollection<
 	async findMany(): Promise<Array<Instance> | null>;
 	/**
 	 * Fetches multiple models from this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find models to fetch.
+	 * @param filter {Data} The filter to find models to fetch.
 	 * @param options {mongo.FindOneOptions} Optional setting for this command.
 	 * @return {Promise<Array<Instance> | null>} The models matching the filter,
 	 * or null if none matches.
@@ -339,7 +335,7 @@ class MongoCollection<
 	 * const user = await Users.findMany({ attempts: 3 });
 	 */
 	async findMany(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		options?: mongo.FindOptions,
 	): Promise<Array<Instance> | null>;
 	/**
@@ -356,7 +352,7 @@ class MongoCollection<
 		options?: mongo.FindOptions,
 	): Promise<Array<Instance> | null>;
 	async findMany(
-		search?: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search?: Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOptions,
 	): Promise<Array<Instance> | null> {
 		return this.find(search, options).toArray();
@@ -377,7 +373,7 @@ class MongoCollection<
 	): Promise<Instance | null>;
 	/**
 	 * Fetches the first model to match the filter.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find the model to fetch.
+	 * @param filter {Data} The filter to find the model to fetch.
 	 * @param options {mongo.FindOneOptions} Optional setting for this command.
 	 * @return {Instance | null} The model to match the filter, or `null` if no model matches.
 	 * @note
@@ -386,10 +382,7 @@ class MongoCollection<
 	 * @example
 	 * const user = await Users.findOne({ email: 'email@email.com' });
 	 */
-	async findOne(
-		filter: Partial<z.infer<Schema>>,
-		options?: mongo.FindOneOptions,
-	): Promise<Instance | null>;
+	async findOne(filter: Data, options?: mongo.FindOneOptions): Promise<Instance | null>;
 	/**
 	 * Fetches the first model to passes the predicate.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find the model to fetch.
@@ -403,7 +396,7 @@ class MongoCollection<
 		options?: mongo.FindOneOptions,
 	): Promise<Instance | null>;
 	async findOne(
-		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOneOptions,
 	): Promise<Instance | null> {
 		if (search instanceof mongo.ObjectId) {
@@ -468,26 +461,30 @@ class MongoCollection<
 		if ("_id" in parse.data) delete parse.data._id;
 		const encoded = encode(parse.data);
 
-		for (const unique of this.uniques) {
-			if (await this.collection.findOne({ [unique]: encoded[unique] })) {
-				return this.#uniqueFailure(unique);
+		try {
+			const result = await this.collection.insertOne(encoded, options);
+			if (!result.acknowledged) {
+				return this.#rejectFailure();
 			}
-		}
 
-		const result = await this.collection.insertOne(encoded, options);
-		if (!result.acknowledged) {
-			return this.#rejectFailure();
+			return {
+				acknowledged: true,
+				model: new this.model({ ...parse.data, _id: result.insertedId }),
+			};
+		} catch (error: any) {
+			if (error instanceof mongo.MongoServerError) {
+				if (error.code === 11000) {
+					const key = Object.keys(error.errorResponse.keyPattern).at(0) ?? "";
+					return this.#uniqueFailure(key);
+				}
+			}
+			return { acknowledged: false, errors: { general: "Failed to Insert Record" } };
 		}
-
-		return {
-			acknowledged: true,
-			model: new this.model({ ...parse.data, _id: result.insertedId }),
-		};
 	}
 
 	/**
 	 * Transform models that match the query.
-	 * @param filter {Partial<z.infer<Schema>>} The key-value pairs to query for.
+	 * @param filter {Data} The key-value pairs to query for.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
 	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
 	 * @return {Promise<Array<T> | null>} An array of the transformed data, or null if no models match query.
@@ -507,7 +504,7 @@ class MongoCollection<
 	 * )
 	 */
 	async transformMany<T>(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOptions,
 	): Promise<Array<T> | null>;
@@ -538,7 +535,7 @@ class MongoCollection<
 		options?: mongo.FindOptions,
 	): Promise<Array<T> | null>;
 	async transformMany<T>(
-		search: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: Data | QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOptions,
 	): Promise<Array<T> | null> {
@@ -571,7 +568,7 @@ class MongoCollection<
 	): Promise<T | null>;
 	/**
 	 * Transform a model that matches the query.
-	 * @param filter {Partial<z.infer<Schema>>} The key-value pairs to query for.
+	 * @param filter {Data} The key-value pairs to query for.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
 	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
 	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
@@ -589,7 +586,7 @@ class MongoCollection<
 	 * )
 	 */
 	async transformOne<T>(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOneOptions,
 	): Promise<T | null>;
@@ -615,7 +612,7 @@ class MongoCollection<
 		options?: mongo.FindOneOptions,
 	): Promise<T | null>;
 	async transformOne<T>(
-		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOneOptions,
 	): Promise<T | null> {
@@ -635,7 +632,7 @@ class MongoCollection<
 
 	/**
 	 * Update multiple models in this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find the models to update.
+	 * @param filter {Data} The filter to find the models to update.
 	 * @param update {Partial<z.infer<Schema>>} The partial record containing the updated key-values.
 	 * @param options {mongo.FindOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
@@ -649,7 +646,7 @@ class MongoCollection<
 	 * const updated = await Users.updateMany({ email: 'email@email.com' }, { email: 'newemail@email.com' })
 	 */
 	async updateMany(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		update: Partial<z.infer<Schema>>,
 		options?: mongo.FindOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
@@ -672,7 +669,7 @@ class MongoCollection<
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	/**
 	 * Update multiple models in this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find models to update.
+	 * @param filter {Data} The filter to find models to update.
 	 * @param updater {ModelUpdater<Schema, Instance>} A function passed to update each model.
 	 * @param options {mongo.FindOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
@@ -688,7 +685,7 @@ class MongoCollection<
 	 * })
 	 */
 	async updateMany(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		updater: ModelUpdater<Schema, Instance>,
 		options?: mongo.FindOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
@@ -712,15 +709,11 @@ class MongoCollection<
 		options?: mongo.FindOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	async updateMany(
-		search: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: Data | QueryPredicate<Schema, Instance>,
 		update: Partial<z.infer<Schema>> | ModelUpdater<Schema, Instance>,
 		options?: mongo.FindOptions,
 	): Promise<UpdateManyResult<Schema, Instance>> {
 		if (typeof update === "object") {
-			for (const unique of this.uniques) {
-				if (unique in update) return this.#uniqueFailure(unique);
-			}
-
 			const parsed = await this.schema.partial().safeParseAsync(update);
 			if (!parsed.success) return this.#schemaFailure(parsed.error);
 		}
@@ -733,13 +726,6 @@ class MongoCollection<
 				const parsed = await this.schema.safeParseAsync(model.toJSON());
 				if (!parsed.success) {
 					return this.#schemaFailure(parsed.error);
-				}
-
-				for (const unique of this.uniques) {
-					const encoded = encode({ [unique]: model[unique] });
-					if (await this.findOne(encoded)) {
-						return this.#uniqueFailure(unique);
-					}
 				}
 			} else {
 				Object.assign(model, update);
@@ -797,7 +783,7 @@ class MongoCollection<
 	): Promise<UpdateResult<Schema, Instance>>;
 	/**
 	 * Update the first model to match the predicate in this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find the model to update.
+	 * @param filter {Data} The filter to find the model to update.
 	 * @param update {Partial<z.infer<Schema>>} The partial record containing the updated key-values.
 	 * @param options {mongo.FindOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateResult<Schema, Instance>>} The updated model if it is found,
@@ -811,13 +797,13 @@ class MongoCollection<
 	 * const updated = await Users.updateOne((user) => user.email === 'email@email.com', { attempts: 0 })
 	 */
 	async updateOne(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		update: Partial<z.infer<Schema>>,
 		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateResult<Schema, Instance>>;
 	/**
 	 * Update the first model to match the filter in this collection.
-	 * @param filter {Partial<z.infer<Schema>>} The filter to find the model to update.
+	 * @param filter {Data} The filter to find the model to update.
 	 * @param updater {ModelUpdater<Schema, Instance>} A function passed to update each model.
 	 * @param options {mongo.FindOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateResult<Schema, Instance>>} The updated model if it is found,
@@ -833,7 +819,7 @@ class MongoCollection<
 	 * })
 	 */
 	async updateOne(
-		filter: Partial<z.infer<Schema>>,
+		filter: Data,
 		updater: ModelUpdater<Schema, Instance>,
 		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateResult<Schema, Instance>>;
@@ -874,58 +860,64 @@ class MongoCollection<
 		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateResult<Schema, Instance>>;
 	async updateOne(
-		search: mongo.ObjectId | Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		update: Partial<z.infer<Schema>> | ModelUpdater<Schema, Instance>,
 		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateResult<Schema, Instance>> {
-		let model: Instance | null;
+		let before: Instance | null;
 		if (search instanceof mongo.ObjectId) {
-			model = await this.findOne(search);
+			before = await this.findOne(search);
 		} else if (typeof search === "object") {
-			model = await this.findOne(search);
+			before = await this.findOne(search);
 		} else {
-			model = await this.findOne(search);
+			before = await this.findOne(search);
 		}
 
-		if (model === null) {
+		if (before === null) {
 			return {
 				acknowledged: false,
 				errors: { general: `No ${this.model.name} found` },
 			};
 		}
 
+		const after = new this.model(before.toJSON());
+
 		if (typeof update === "function") {
-			await update(model);
+			await update(after);
 		} else {
-			Object.assign(model, update);
+			Object.assign(after, update);
 		}
 
-		const parsed = await this.schema.safeParseAsync(model);
+		const parsed = await this.schema.safeParseAsync(after.toJSON());
 		if (!parsed.success) {
 			return this.#schemaFailure(parsed.error);
 		}
 
-		const encoded = encode(parsed.data);
+		const diff = changes("", before.toJSON(), after.toJSON()).parse;
 
-		for (const unique of this.uniques) {
-			const conflict = await this.findOne({
-				[unique]: encoded[unique],
-			} as Partial<z.infer<Schema>>);
-			if (conflict && !sameID(model, conflict)) {
-				return this.#uniqueFailure(unique);
+		if (!Object.keys(diff)) {
+			return { acknowledged: false, errors: { general: "No Updates to Make" } };
+		}
+
+		try {
+			const updated = await this.collection.findOneAndUpdate({ _id: before._id }, diff, {
+				...options,
+				returnDocument: "after",
+			});
+			if (updated === null) {
+				return this.#rejectFailure();
 			}
-		}
 
-		const updated = await this.collection.findOneAndUpdate(
-			{ _id: model._id },
-			{ $set: encoded },
-			{ ...options },
-		);
-		if (updated === null) {
-			return this.#rejectFailure();
+			return { acknowledged: true, model: new this.model(updated) };
+		} catch (error: any) {
+			if (error instanceof mongo.MongoServerError) {
+				if (error.code === 11000) {
+					const key = Object.keys(error.errorResponse.keyPattern).at(0) ?? "";
+					return this.#uniqueFailure(key);
+				}
+			}
+			return { acknowledged: false, errors: { general: "Failed to Update Record" } };
 		}
-
-		return { acknowledged: true, model };
 	}
 
 	#schemaFailure(failure: z.ZodError): {
@@ -961,13 +953,6 @@ class MongoCollection<
 	}
 }
 
-function sameID<Schema extends z.ZodObject, Instance extends CollectionModel<Schema>>(
-	modelA: Instance,
-	modelB: Instance,
-): boolean {
-	return modelA._id.toString() === modelB._id.toString();
-}
-
 class FindCursor<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
@@ -977,10 +962,7 @@ class FindCursor<
 	private readonly cursor: mongo.FindCursor;
 	private readonly model: ModelConstructor<Schema, Instance>;
 	private readonly query: Partial<z.infer<Schema>>;
-	private readonly search?:
-		| Partial<z.infer<Schema>>
-		| QueryPredicate<Schema, Instance>
-		| undefined;
+	private readonly search?: Data | QueryPredicate<Schema, Instance> | undefined;
 	private readonly _limit: number;
 	private readonly _skip: number;
 	private skipped: number = 0;
@@ -990,7 +972,7 @@ class FindCursor<
 
 	constructor(
 		collection: MongoCollection<Schema, Instance>,
-		search?: Partial<z.infer<Schema>> | QueryPredicate<Schema, Instance>,
+		search?: Data | QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOptions,
 		transform?: (model: Instance) => MaybePromise<T>,
 	) {

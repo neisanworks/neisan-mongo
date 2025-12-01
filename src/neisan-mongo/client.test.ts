@@ -11,6 +11,7 @@ const UserSchema = z.object({
 		.string()
 		.regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/),
 	attempts: z.number().min(0, "Must Be Greater Than or Equal To 0").default(0),
+	visits: z.coerce.bigint().default(0n),
 	teams: z.set(z.number()).default(new Set()),
 	edited: z.coerce.date().default(() => new Date()),
 });
@@ -20,6 +21,7 @@ class UserModel extends Model<UserSchema> {
 	email: string;
 	password: string;
 	attempts: number;
+	visits: bigint;
 	teams: Set<number>;
 	edited: Date;
 
@@ -127,5 +129,8 @@ test("Collection Usage", async () => {
 		expect(found).toBeInstanceOf(UserModel);
 	}
 
-	await Users.insert({ email: "email@email.com", password: "$omePassw0rd" });
+	await Users.insert({ email: "someemail@email.com", password: "$omePassw0rd" });
+	console.log(
+		await Users.insert({ email: "someemail@email.com", password: "$omePassw0rd" }),
+	);
 });

@@ -33,7 +33,8 @@ export type CollectionParameters<
 		name: string;
 		schema: Schema;
 		model: ModelConstructor<Schema, Instance>;
-		uniques?: Array<keyof z.infer<Schema>>;
+		uniques?: Array<string>;
+		indexes?: mongo.IndexSpecification
 	}
 >;
 export type SchemaError<Schema extends z.ZodObject> = Partial<
