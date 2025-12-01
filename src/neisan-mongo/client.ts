@@ -1,6 +1,5 @@
 import mongo from "mongodb";
 import z from "zod/v4";
-import { decode, encode } from "../utils.js";
 import type {
 	CollectionModel,
 	CollectionParameters,
@@ -18,6 +17,7 @@ import type {
 	UpdateManyResult,
 	UpdateResult,
 } from "../types.js";
+import { decode, encode } from "../utils.js";
 
 class MongoCollection<
 	Schema extends z.ZodObject,

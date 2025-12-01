@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import * as mongo from "mongodb";
 import * as z from "zod/v4";
+import type { Data } from "../types";
 import { MongoClient } from "./client";
 import { Model } from "./model";
-import type { Data } from "../types";
 
 const UserSchema = z.object({
 	email: z.email("Invalid Email Address"),
