@@ -15,7 +15,7 @@
 	"scripts": {
 		"build": "rm -rf dist && tsc",
 		"clean": "rm -rf dist",
-		"prepare": "ts-patch install && bun run build",
+		"prepare": "bun run build",
 		"typecheck": "tsc --noEmit"
 	},
 	"exports": {

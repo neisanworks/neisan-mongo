@@ -26,11 +26,6 @@
 		/* Experimental (Required for Library) */
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true,
-		"plugins": [
-			{
-				"transform": "typia/lib/transform"
-			}
-		]
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules", "dist", "src/**/*.test.ts"]
