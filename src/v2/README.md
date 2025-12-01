@@ -18,8 +18,6 @@ A schema-safe, Zod-powered MongoDB driver with class-modeling, functional queryi
 
 ## Quick Start
 
-[Back to Top](#table-of-contents)
-
 ### 1. Install
 
 ```bash
@@ -139,8 +137,6 @@ Using `@neisanworks/neisan-mongo/v2` is that easy!
 
 ## Core Concepts
 
-[Back to Top](#table-of-contents)
-
 - Schema: Define shape and validation using `zod/v4`
 - Model: Extends `Model` to use methods and virtual properties
 - Collection: `db.collection({ name, model, schema })` creates a type-safe interface for a MongoDB collection
@@ -150,8 +146,6 @@ Using `@neisanworks/neisan-mongo/v2` is that easy!
 ---
 
 ## Why Use `@neisanworks/neisan-mongo/v2`
-
-[Back to Top](#table-of-contents)
 
 | Feature                     | **neisan-mongo**                                                               | **MongoDB Driver**                                               | **Mongoose**                                    | **ZodMongo**                                                          |
 | :-------------------------- | :----------------------------------------------------------------------------- | :--------------------------------------------------------------- | :---------------------------------------------- | :-------------------------------------------------------------------- |
@@ -172,8 +166,6 @@ Using `@neisanworks/neisan-mongo/v2` is that easy!
 
 ## Data Pipeline
 
-[Back to Top](#table-of-contents)
-
 ### Driver
 
 ```mermaid
@@ -191,12 +183,10 @@ A[Server] --> B[Document] --> |validation| C[MongoCollection]
 
 ```mermaid
 graph LR
-A[Server] --> |query| B[MongoCollection] --> C[Model Instance] --> |operation| B --> A
+A[Server] --> |query| B[MongoCollection] --> |document| C[Model Instance] --> |operation| B --> A
 ```
 
 ## Collection Methods
-
-[Back to Top](#table-of-contents)
 
 `neisan-mongo` supports a range of methods for querying, updating, and transforming data
 
@@ -529,8 +519,6 @@ const locked = await Users.exists((user) => user.locked)
 
 ## Cursor Methods
 
-[Back to Top](#table-of-contents)
-
 <details>
 <summary><strong>clone</strong></summary>
 
@@ -705,8 +693,6 @@ const cursor = await Users.find((user) => user.locked).toArray()
 
 ## Relationships (Joins)
 
-[Back to Top](#table-of-contents)
-
 Though collections do not share relationships, the behavior of relationships can be mimicked
 
 ```ts
@@ -724,8 +710,6 @@ const message = await Users.transformOne(
 ---
 
 ## Contributing
-
-[Back to Top](#table-of-contents)
 
 Found a bug or have an idea? Open an issue or PR.
 
