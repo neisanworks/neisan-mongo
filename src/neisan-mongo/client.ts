@@ -1,4 +1,4 @@
-import mongo, { type Sort } from "mongodb";
+import mongo from "mongodb";
 import z from "zod/v4";
 import { decode, encode } from "../utils.js";
 import type {
@@ -17,7 +17,7 @@ import type {
 	SortParameters,
 	UpdateManyResult,
 	UpdateResult,
-} from "./types.js";
+} from "../types.js";
 
 class MongoCollection<
 	Schema extends z.ZodObject,
@@ -32,21 +32,6 @@ class MongoCollection<
 		const name = params.name;
 		this.schema = params.schema;
 		this.uniques = new Set(params.uniques);
-
-		if (params.uniques) {
-			this.collection.createIndex(params.uniques.map((key) => String(key)));
-		}
-		if (params.indexes) {
-			this.collection.createIndex(
-				params.indexes.map((index) =>
-					Object.fromEntries(
-						Object.entries(index).filter((index) => index[1] !== undefined) as Array<
-							[string, 1 | -1]
-						>,
-					),
-				),
-			);
-		}
 
 		Object.defineProperty(this, "collection", {
 			writable: false,
@@ -267,14 +252,38 @@ class MongoCollection<
 		await this.collection.dropIndex(name, options);
 	}
 
-	async exists(
-		id: mongo.ObjectId,
-		options?: mongo.FindOneOptions
-	): Promise<boolean>;
+	/**
+	 * Checks if a record exists in this collection.
+	 * @param id {mongo.ObjectId} The id of the record.
+	 * @param options {mongo.FindOneOptions | undefined} Optional settings for the command.
+	 * @returns {Promise<boolean>} A boolean, representing whether the record exists.
+	 * @example
+	 * const exists = await Users.exists(<id>)
+	 */
+	async exists(id: mongo.ObjectId, options?: mongo.FindOneOptions): Promise<boolean>;
+	/**
+	 * Checks if a record exists in this collection.
+	 * @param filter {Partial<z.infer<Schema>>} A filter to query for
+	 * @param options {mongo.FindOneOptions | undefined} Optional settings for the command.
+	 * @returns {Promise<boolean>} A boolean, representing whether the record exists.
+	 * @note
+	 * Filter matches only models with the exact key-value pairs passed.
+	 * For a more dynamic query, use a predicate.
+	 * @example
+	 * const exists = await Users.exists({ email: "<email>" })
+	 */
 	async exists(
 		filter: Partial<z.infer<Schema>>,
 		options?: mongo.FindOneOptions,
 	): Promise<boolean>;
+	/**
+	 * Checks if a record exists in this collection.
+	 * @param predicate {QueryPredicate<Schema, Instance>} A predicate to match against.
+	 * @param options {mongo.FindOneOptions | undefined} Optional settings for the command.
+	 * @returns {Promise<boolean>} A boolean, representing whether the record exists.
+	 * @example
+	 * const exists = await Users.exists((user) => user.email === "<email>")
+	 */
 	async exists(
 		predicate: QueryPredicate<Schema, Instance>,
 		options?: mongo.FindOneOptions,
@@ -286,7 +295,7 @@ class MongoCollection<
 		if (search instanceof mongo.ObjectId) {
 			return (await this.findOne(search, options)) !== null;
 		}
-		return this.find(search, options).hasNext()
+		return this.find(search, options).hasNext();
 	}
 
 	/**
@@ -384,7 +393,7 @@ class MongoCollection<
 	/**
 	 * Fetches the first model to passes the predicate.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find the model to fetch.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.        * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {mongo.FindOneOptions} Optional setting for this command.
 	 * @return {Instance | null} The first model to pass the predicate, or `null` if no model passes.
 	 * @example
 	 * const user = await Users.findOne((user) => user.email.endsWith('email.com'));
@@ -476,11 +485,53 @@ class MongoCollection<
 		};
 	}
 
+	/**
+	 * Transform models that match the query.
+	 * @param filter {Partial<z.infer<Schema>>} The key-value pairs to query for.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
+	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @return {Promise<Array<T> | null>} An array of the transformed data, or null if no models match query.
+	 * @note
+	 * The caller is responsible for ensuring there is enough memory to store the results.
+	 * @note
+	 * Filter matches only models with the exact key-value pairs passed.
+	 * For a more dynamic query, use a predicate.
+	 * @note
+	 * This method uses a FindCursor to query for models.
+	 * FindCursor will close when `next` is `null`.
+	 * Passing a transformer which returns `null` will close this cursor.
+	 * @example
+	 * const cursor = Users.transformMany(
+	 * 		{ attempts: 3 },
+	 *      (user) => ({ id: user._id.toString(), username: user.username })
+	 * )
+	 */
 	async transformMany<T>(
 		filter: Partial<z.infer<Schema>>,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOptions,
 	): Promise<Array<T> | null>;
+	/**
+	 * Transform models that match the query.
+	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find matching models.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
+	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @return {Promise<Array<T> | null>} An array of the transformed data, or null if no models match query.
+	 * @note
+	 * The caller is responsible for ensuring there is enough memory to store the results.
+	 * @note
+	 * Filter matches only models with the exact key-value pairs passed.
+	 * For a more dynamic query, use a predicate.
+	 * @note
+	 * This method uses a FindCursor to query for models.
+	 * FindCursor will close when `next` is `null`.
+	 * Passing a transformer which returns `null` will close this cursor.
+	 * @example
+	 * const cursor = Users.transformMany(
+	 * 		(user) => user.locked,
+	 *      (user) => ({ id: user._id.toString(), username: user.username })
+	 * )
+	 */
 	async transformMany<T>(
 		predicate: QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
@@ -494,16 +545,70 @@ class MongoCollection<
 		return this.find(search, options).map(transform).toArray();
 	}
 
+	/**
+	 * Transform a model that matches the query.
+	 * @param id {mongo.ObjectId} The id of the model to transform.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
+	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
+	 * @note
+	 * Filter matches only models with the exact key-value pairs passed.
+	 * For a more dynamic query, use a predicate.
+	 * @note
+	 * This method uses a FindCursor to query for models.
+	 * FindCursor will close when `next` is `null`.
+	 * Passing a transformer which returns `null` will close this cursor.
+	 * @example
+	 * const cursor = Users.transformOne(
+	 * 		<id>,
+	 *      (user) => ({ id: user._id.toString(), username: user.username })
+	 * )
+	 */
 	async transformOne<T>(
 		id: mongo.ObjectId,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOneOptions,
 	): Promise<T | null>;
+	/**
+	 * Transform a model that matches the query.
+	 * @param filter {Partial<z.infer<Schema>>} The key-value pairs to query for.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
+	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
+	 * @note
+	 * Filter matches only models with the exact key-value pairs passed.
+	 * For a more dynamic query, use a predicate.
+	 * @note
+	 * This method uses a FindCursor to query for models.
+	 * FindCursor will close when `next` is `null`.
+	 * Passing a transformer which returns `null` will close this cursor.
+	 * @example
+	 * const cursor = Users.transformOne(
+	 * 		{ attempts: 3 },
+	 *      (user) => ({ id: user._id.toString(), username: user.username })
+	 * )
+	 */
 	async transformOne<T>(
 		filter: Partial<z.infer<Schema>>,
 		transform: (model: Instance) => MaybePromise<T>,
 		options?: mongo.FindOneOptions,
 	): Promise<T | null>;
+	/**
+	 * Transform a model that matches the query.
+	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find a match with.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
+	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
+	 * @note
+	 * This method uses a FindCursor to query for models.
+	 * FindCursor will close when `next` is `null`.
+	 * Passing a transformer which returns `null` will close this cursor.
+	 * @example
+	 * const cursor = Users.transformOne(
+	 * 		(user) => user.email.startsWith(""),
+	 *      (user) => ({ id: user._id.toString(), username: user.username })
+	 * )
+	 */
 	async transformOne<T>(
 		predicate: QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
@@ -984,7 +1089,7 @@ class FindCursor<
 	/**
 	 * Iterates over all the documents for this cursor using the iterator, callback pattern.
 	 * If the iterator returns false, iteration will stop.
-	 * @param iterator {(result: T) => void | Promise<void>} The iteration callback.
+	 * @param iterator {(result: T) => MaybePromise<void>} The iteration callback.
 	 * @return {Promise<void>}
 	 * @example
 	 * const cursor = Users.find((user) => user.locked);
@@ -1045,7 +1150,7 @@ class FindCursor<
 	 * Map all documents using the provided function.
 	 * If there is a transform set on this cursor, that will be called
 	 * first and the result passed to this function's transform.
-	 * @param transform {(model: Instance) => R | Promise<R>} The mapping transformation method.
+	 * @param transform {(model: Instance) => MaybePromise<R>} The mapping transformation method.
 	 * @return {FindCursor<Schema, Instance, R>} New FindCursor with transformed results.
 	 * @note
 	 * FindCursor will close when `next` is `null`. Passing a transformer which returns `null` will close this cursor.
@@ -1053,7 +1158,7 @@ class FindCursor<
 	 * const cursor = Users.find().map((user) => ({ id: user._id.toString(), username: user.username }))
 	 */
 	map<R>(
-		transform: (model: Instance) => R | Promise<R>,
+		transform: (model: Instance) => MaybePromise<R>,
 	): FindCursor<Schema, Instance, R> {
 		return new FindCursor(this.collection, this.search, this.options, transform);
 	}

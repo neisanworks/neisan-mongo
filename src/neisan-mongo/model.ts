@@ -1,6 +1,6 @@
 import type mongo from "mongodb";
 import type z from "zod/v4";
-import type {Data, JSONData} from "./types.js";
+import type {Data, JSONData} from "../types.js";
 
 
 export abstract class Model<Schema extends z.ZodObject> {

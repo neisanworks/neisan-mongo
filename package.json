@@ -1,7 +1,7 @@
 {
 	"name": "@neisanworks/neisan-mongo",
-	"description": "JS/TS class-driven MongoDB driver",
-	"version": "0.2.0",
+	"description": "A schema-safe, Zod-powered MongoDB driver with class-modeling, functional querying, native async iteration, and built-in validation for unique constraints.",
+	"version": "1.0.0",
 	"author": "@neisanworks",
 	"license": "MIT",
 	"type": "module",
@@ -47,7 +47,6 @@
 	},
 	"dependencies": {
 		"mongodb": "^7.0.0",
-		"typia": "^10.1.0",
 		"zod": "^4.1.12"
 	},
 	"private": false,

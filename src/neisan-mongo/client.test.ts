@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import * as mongo from "mongodb";
 import * as z from "zod/v4";
-import { MongoClient } from "./driver";
+import { MongoClient } from "./client";
 import { Model } from "./model";
-import type { Data, Prettier } from "./types";
+import type { Data } from "../types";
 
 const UserSchema = z.object({
 	email: z.email("Invalid Email Address"),
@@ -45,6 +45,7 @@ const Users = db.collection({
 	name: "users",
 	schema: UserSchema,
 	model: UserModel,
+	uniques: ["email"],
 });
 
 test("Collection Usage", async () => {
@@ -75,8 +76,8 @@ test("Collection Usage", async () => {
 	expect(updated.model).toBeInstanceOf(UserModel);
 	expect(updated.model.email).toEqual("newemail@email.com");
 
-	const transformed = await Users.transformOne(updated.model._id, (user) => user.email)
-	expect(transformed).toEqual('newemail@email.com')
+	const transformed = await Users.transformOne(updated.model._id, (user) => user.email);
+	expect(transformed).toEqual("newemail@email.com");
 
 	const deleted = await Users.deleteOne(updated.model._id);
 	expect(deleted).toBeInstanceOf(UserModel);
@@ -125,4 +126,6 @@ test("Collection Usage", async () => {
 		const found = await Users.deleteOne({ email: `newemail${i}@email.com` });
 		expect(found).toBeInstanceOf(UserModel);
 	}
+
+	await Users.insert({ email: "email@email.com", password: "$omePassw0rd" });
 });
