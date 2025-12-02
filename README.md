@@ -11,7 +11,7 @@ A schema-safe, Zod-powered MongoDB driver with class-modeling, functional queryi
 - [Data Pipeline](#data-pipeline)
 - [Collection Methods](#collection-methods)
 - [Cursor Methods](#cursor-methods)
-- [Relationships (Joins)](#relationships-joins)
+- [Relationships](#relationships)
 - [Contributing](#contributing)
 
 ---
@@ -40,7 +40,7 @@ and that you’ve configured an access token with `read:packages` scope.
 
 ### 2. Define Your Collection Model
 
-```ts
+```typescript
 // src/lib/server/database/models/user.ts
 import { type Data, Model } from '@neisanworks/neisan-mongo';
 import * as z from 'zod/v4';
@@ -79,9 +79,11 @@ class UserModel extends Model<UserSchema> {
 }
 ```
 
+**Note:** `zod/v4` ensures compatibility with Zod v4’s type inference system.
+
 ### 3. Initialize your Client/Database/Collection
 
-```ts
+```typescript
 // src/lib/server/database/index.ts
 import { MongoClient } from '@neisanworks/neisan-mongo';
 import { UserModel, UserSchema } from './models/user';
@@ -103,7 +105,7 @@ const Users = db.collection({
 
 ### 4. Use Your Collection
 
-```ts
+```typescript
 // src/lib/remote/auth.remote.ts
 import { error } from "@sveltejs/kit";
 import { command, getRequestEvent } from "$app/server";
@@ -195,7 +197,7 @@ A[Server] --> |query| B[MongoCollection] --> |document| C[Model Instance] --> |o
 
 - `insert`: creates a new record and returns it
 
-```ts
+```typescript
 const insert = await Users.insert({ 
     email: 'email@email.com', 
     password: '$omePassw0rd' 
@@ -221,7 +223,7 @@ const insert = await Users.insert({
 
 - `findOne`: fetch a record from the collection
 
-```ts
+```typescript
 // Fetch via record._id
 const id = new mongo.ObjectId("<id-string>")
 const user = await Users.findOne(id)
@@ -241,7 +243,7 @@ const user = await Users.findOne((user) => {
 
 - `findMany`: fetch an array of records from the collection
 
-```ts
+```typescript
 // Fetch via filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -257,7 +259,7 @@ const users = await Users.findMany((user) => user.locked)
 
 - `find`: create a cursor to fetch an array of records from the collection
 
-```ts
+```typescript
 // Fetch via filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -282,7 +284,7 @@ for await (const user of cursor) {
 
 - `transformOne`: transform a record from the collection
 
-```ts
+```typescript
 // Transform via record._id
 const update = await Users.transformOne(<id>, (user) => {
     return { id: user._id.toString(), username: user.username }
@@ -312,7 +314,7 @@ const update = await Users.transformOne(
 
 - `transformMany`: transform multiple records from the collection
 
-```ts
+```typescript
 // Transform via filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -339,7 +341,7 @@ const update = await Users.transformMany(
 
 - `updateOne`: update a record in the collection
 
-```ts
+```typescript
 // Update via record._id, using partial record
 const update = await Users.updateOne(<id>, { attempts: 0 })
 // or, using update function
@@ -386,7 +388,7 @@ const update = await Users.updateOne(
 
 - `updateMany`: update multiple records in the collection
 
-```ts
+```typescript
 // Update via filter, using partial record
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -425,7 +427,7 @@ const update = await Users.updateMany(
 
 - `deleteOne`: delete a record from the collection
 
-```ts
+```typescript
 // Delete via record._id
 const deleted = await Users.deleteOne(<id>)
 
@@ -446,7 +448,7 @@ const deleted = await Users.deleteOne((user) => {
 
 - `deleteMany`: delete multiple records from the collection
 
-```ts
+```typescript
 // Delete via filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -466,7 +468,7 @@ const deleted = await Users.deleteMany((user) => user.locked)
 
 - `count`: return an exact count of models matching the query
 
-```ts
+```typescript
 // Count, using filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -479,7 +481,7 @@ const locked = await Users.count((user) => user.locked)
 
 - `createIndex`: create an index on the collection
 
-```ts
+```typescript
 // Note:    Use `1` to sort in ascending (lowest first) order, 
 //          and `-1` to sort in descending (highest first) order.
 await Users.createIndex({ email: 1 })
@@ -487,7 +489,7 @@ await Users.createIndex({ email: 1 })
 
 - `drop`: drop the collection from the database, removing it permanently
 
-```ts
+```typescript
 // Note:    New accesses will create a new collection.
 const dropped = await Users.drop()
 
@@ -496,14 +498,14 @@ const dropped = await Users.drop()
 
 - `dropIndex`: drop an index from the collection
 
-```ts
+```typescript
 const userEmailIndex = await Users.createIndex({ email: 1 });
 await Users.dropIndex(userEmailIndex);
 ```
 
 - `exists`: checks if a record exists
 
-```ts
+```typescript
 // Check existence, using filter
 // Note:    Filter matches only models with the exact key-value pairs passed.
 //          For a more dynamic query, use a predicate.
@@ -524,7 +526,7 @@ const locked = await Users.exists((user) => user.locked)
 
 - `clone`: create a new uninitialized copy of the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked)
 for await (const user of cursor) {
     // code implementation
@@ -541,7 +543,7 @@ const clone = cursor.clone()
 
 - `close`: free any client-side resources used by the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked);
 await cursor.close();
 ```
@@ -552,7 +554,7 @@ await cursor.close();
 
 - `count`: return an exact count of models matching the query
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked)
 const locked = cursor.count()
 
@@ -565,7 +567,7 @@ const locked = cursor.count()
 
 - `hasNext`: whether the cursor has a next result
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked)
 while (await cursor.hasNext()) {
     // code implementation
@@ -580,7 +582,7 @@ while (await cursor.hasNext()) {
 
 - `hint`: set a hint for the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked).hint({ attempts: 1 })
 
 // Output: FindCursor<Schema, Instance, T> with hint applied
@@ -592,7 +594,7 @@ const cursor = Users.find((user) => user.locked).hint({ attempts: 1 })
 
 - `limit`: set a limit for the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked).limit(5)
 
 // Output: FindCursor<Schema, Instance, T> that will yield no more than 5 UserModels
@@ -604,7 +606,7 @@ const cursor = Users.find((user) => user.locked).limit(5)
 
 - `map`: apply a transformation on all models yielded by the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked).map((user) => (
     { id: user._id.toString(), username: user.username }
 ))
@@ -618,7 +620,7 @@ const cursor = Users.find((user) => user.locked).map((user) => (
 
 - `next`: fetch the next model from the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked)
 while (await cursor.hasNext()) {
     const next = await cursor.next()
@@ -633,7 +635,7 @@ while (await cursor.hasNext()) {
 
 - `rewind`: rewind the cursor to its initialized state
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked)
 for await (const user of cursor) {
     // code implementation
@@ -649,7 +651,7 @@ cursor.rewind()
 
 - `skip`: set the skip for the cursor
 
-```ts
+```typescript
 const cursor = Users.find((user) => user.locked).skip(5)
 
 // Output: FindCursor<Schema, Instance, T> that will skip the first 5 UserModels
@@ -661,7 +663,7 @@ const cursor = Users.find((user) => user.locked).skip(5)
 
 - `sort`: set the sort order of the cursor
 
-```ts
+```typescript
 // Note:    Use `1` to sort in ascending (lowest first) order, 
 //          and `-1` to sort in descending (highest first) order.
 const cursor = Users.find((user) => user.locked).sort({ attempts: 1 })
@@ -675,7 +677,7 @@ const cursor = Users.find((user) => user.locked).sort({ attempts: 1 })
 
 - `toArray`: fetch an array of all models matching the query
 
-```ts
+```typescript
 // Note:    The caller is responsible for ensuring there is enough memory to 
 //          store the array
 
@@ -691,21 +693,204 @@ const cursor = await Users.find((user) => user.locked).toArray()
 
 ---
 
-## Relationships (Joins)
+## Relationships
 
-Though collections do not share relationships, the behavior of relationships can be mimicked
+Models can define references to other collections through the @relationship() decorator.
+This creates a typed link between models and enables simple, explicit population without automatic magic.
 
-```ts
-const message = await Users.transformOne(
-    { email: "<email>" }, 
-    async (user) => {
-        return Profiles.transformOne(
-            user.profileID,
-            (profile) => `Welcome, ${profile.fullname}`
-        )
-    }
-)
+### 1. Define Schemas, Models, and the Relationship
+
+```typescript
+// src/lib/server/database/models/user.ts
+import { 
+    type Data, 
+    Model, 
+    relationship, 
+    RelationshipSchema
+} from "@neisanworks/neisan-mongo";
+import * as bcrypt from "bcrypt";
+import * as z from "zod/v4";
+import { PASSWORD_PEPPER } from "$env/static/private";
+import { db } from "../index.ts";
+
+export const ProfileSchema = z.object({
+	last: NameSchema,
+	first: NameSchema,
+	middle: NameSchema.nullish(),
+	prefermiddle: z.boolean("Invalid Profile Prefer Middle Parameter").default(false),
+	username: UsernameSchema,
+});
+export type ProfileSchema = typeof ProfileSchema;
+
+class ProfileModel extends Model<ProfileSchema> {
+    last!: string;
+	first!: string;
+	middle?: string | null | undefined;
+	prefermiddle!: boolean;
+	username!: string;
+
+	constructor(data: Data) {
+		super();
+		this.hydrate(data);
+	}
+
+	get name(): string {
+		if (this.prefermiddle && this.middle) return `${this.middle} ${this.last}`;
+		return `${this.first} ${this.last}`;
+	}
+}
+
+export const Profiles = db.collection({
+    name: "profiles",
+    schema: ProfileSchema,
+    model: ProfileModel,
+    uniques: ["username"]
+})
+
+export const UserSchema = z.object({
+	email: z.email("Invalid User Email Address"),
+	username: UsernameSchema,
+	password: z.coerce.string().length(60, "User Password Not Hashed"),
+	attempts: z.number().min(0, "User Auth Attempts Must Be GTE 0").default(0),
+    profile: RelationshipSchema<ProfileSchema>(ProfileModel)
+});
+export type UserSchema = typeof UserSchema;
+
+class UserModel extends Model<UserSchema> {
+    email!: string;
+    username!: string;
+    password!: string;
+    attempts!: number;
+    @relationship(Profiles)
+    profile: Ref<typeof Profiles> = null;
+
+    constructor(data: Data) {
+		super();
+		this.hydrate(data);
+	}
+
+	get locked(): boolean {
+		return this.attempts >= 3;
+	}
+
+	async authenticate(password: string): Promise<boolean> {
+		return bcrypt.compare(password + PASSWORD_PEPPER, this.password);
+	}
+}
+
+export const Users = db.collection({
+    name: "users",
+    schema: UserSchema,
+    model: UserModel,
+    uniques: ["email", "username"]
+})
 ```
+
+**Note:** `Ref<T>` is defined as `T["model"] | mongo.ObjectId | null`
+
+**Note:** `RelationshipSchema(Model)` creates a Zod-compatible type allowing `ObjectId`, `Model`, or `null`.
+
+### 2. Populate the Relationship
+
+A relationship can be implicitly populated during fetching:
+
+```typescript
+// src/lib/remote/auth.remote.ts
+import { error } from "@sveltejs/kit";
+import { command, getRequestEvent } from "$app/server";
+import { LoginFormSchema } from './auth.schema.ts';
+import { Users } from '$lib/server/database/models/user.ts';
+
+const login = command(LoginFormSchema, async ({ identifier, password }) => {
+    const user = await Users.findOne(
+        (user) => {
+            return user.email === identifier || user.username === identifier;
+        },
+        { populate: "profile" },
+    );
+
+    if (!user || !(await user.authenticate(password))) {
+        const update = await Users.updateOne(
+            (user) => {
+                return user.email === identifier || user.username === identifier;
+            }, 
+            (user) => {
+                user.attempts++;
+            }
+        );
+
+        if (update.acknowledged && update.model.locked) {
+            error(423, "Account Locked");
+        }
+
+        error(401, "Invalid Credentials");
+    }
+
+    // remaining login logic
+
+    return { message: `Welcome Back, ${user.profile.name}`, username: user.username }
+})
+```
+
+Or it can be explicitly populated after fetching:
+
+```typescript
+// src/lib/remote/auth.remote.ts
+import { error } from "@sveltejs/kit";
+import { command, getRequestEvent } from "$app/server";
+import { LoginFormSchema } from './auth.schema.ts';
+import { Users } from '$lib/server/database/models/user.ts';
+
+const login = command(LoginFormSchema, async ({ identifier, password }) => {
+    const user = await Users.findOne((user) => {
+        return user.email === identifier || user.username === identifier;
+    }); // user.profile will be mongo.ObjectId || null
+
+    if (!user || !(await user.authenticate(password))) {
+        const update = await Users.updateOne(
+            (user) => {
+                return user.email === identifier || user.username === identifier;
+            }, 
+            (user) => {
+                user.attempts++;
+            }
+        );
+
+        if (update.acknowledged && update.model.locked) {
+            error(423, "Account Locked");
+        }
+
+        error(401, "Invalid Credentials");
+    }
+
+    // remaining login logic
+
+    // explicitly populate the profile
+    const profile = await user.populate("profile") // typed as ProfileModel || null
+    // can also use user.profile, as the profile is now cached on the property
+
+    if (!profile) {
+        // handle missing profile
+    }
+
+    return { message: `Welcome Back, ${profile.name}`, username: user.username }
+})
+```
+
+### 3. Relationship Behavior
+
+| Action                                  | Result                                                           |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| Assign an `_id` to a relationship field | Stores reference, not the full model                             |
+| Assign a model instance                 | Stores both model and `_id` reference                            |
+| Serialize with `toJSON()`               | Outputs the referenced `_id` (or `null`)                         |
+| Populate via `populate("key" \| ["key1", "key2"])`          | Loads and caches the related model                               |
+| Re-populate the same key                | Reuses cached model unless invalidated                           |
+| Using collection `{ populate }` option    | Populates the relationship automatically before returning models |
+
+**Note:** Circular relationships (e.g. a User having a `manager: Ref<UserModel>`) are supported; populate lazily to prevent recursion.
+
+**Note:** Populated fields are full model instances, not plain objects.
 
 ---
 

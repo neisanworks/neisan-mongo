@@ -134,8 +134,8 @@ export class UpdateFilter implements mongo.UpdateFilter<Record<string, any>> {
 			([_, value]) => Object.keys(value).length > 0,
 		);
 		entries.forEach(([_, value]) => {
-			if ('_id' in value) delete value._id
-		})
+			if ("_id" in value) delete value._id;
+		});
 		return Object.fromEntries(entries);
 	}
 }
@@ -155,7 +155,7 @@ export const changes = (prefix: string, a: unknown, b: unknown): UpdateFilter =>
 		Array.isArray(b) ||
 		b instanceof Set ||
 		b instanceof Map ||
-		typeof b === 'bigint'
+		typeof b === "bigint"
 	) {
 		if (equal(a, b)) return diff;
 

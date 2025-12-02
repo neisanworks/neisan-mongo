@@ -1,7 +1,7 @@
 {
 	"name": "@neisanworks/neisan-mongo",
 	"description": "A schema-safe, Zod-powered MongoDB driver with class-modeling, functional querying, native async iteration, and built-in validation for unique constraints.",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"author": "@neisanworks",
 	"license": "MIT",
 	"type": "module",

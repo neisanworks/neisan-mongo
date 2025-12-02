@@ -1,3 +1,4 @@
+import assert from "node:assert";
 import mongo from "mongodb";
 import z from "zod/v4";
 import type {
@@ -6,6 +7,8 @@ import type {
 	CountOptions,
 	CursorCloseOptions,
 	Data,
+	FindOneOptions,
+	FindOptions,
 	HydratedData,
 	InsertResult,
 	MaybePromise,
@@ -17,7 +20,100 @@ import type {
 	UpdateManyResult,
 	UpdateResult,
 } from "../types.js";
-import { decode, encode, changes } from "../utils.js";
+import { changes, decode, encode } from "../utils.js";
+
+class Relationship<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+> {
+	constructor(
+		public readonly collection: MongoCollection<Schema, Instance>,
+		public _id?: mongo.ObjectId,
+	) {}
+
+	async populate(): Promise<Instance | null> {
+		if (!this._id) return null;
+		return this.collection.findOne(this._id);
+	}
+}
+
+export type RelationshipRecord<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+> = {
+	relationship: Relationship<Schema, Instance>;
+	model?: Instance;
+};
+
+
+export function relationship<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+>(collection: MongoCollection<Schema, Instance>) {
+	return (target: any, key: any) => {
+		assert(typeof target === "object", "target should be an object");
+		assert(typeof key === "string", "key should be a string");
+
+		if (!("__relationships__" in target) || !(target.__relationships__ instanceof Map)) {
+			target.__relationships__ = new Map();
+		}
+		assert(
+			target.__relationships__ instanceof Map,
+			"target.__relationships__ should be a Map",
+		);
+
+		target.__relationships__.set(key, {
+			relationship: new Relationship(collection),
+		});
+
+		Object.defineProperty(target, key, {
+			configurable: false,
+			enumerable: true,
+			get: () => {
+				const value: RelationshipRecord<Schema, Instance> =
+					target.__relationships__.get(key);
+				if (!value) return null;
+				return value.model ?? value.relationship._id ?? null;
+			},
+			set: (value: unknown) => {
+				const current: RelationshipRecord<Schema, Instance> =
+					target.__relationships__.get(key);
+				assert(typeof current === "object", "current should be an object");
+				assert(
+					current.relationship instanceof Relationship,
+					"current.relationship should be a Relationship",
+				);
+
+				if (value instanceof mongo.ObjectId) {
+					current.relationship = new Relationship(collection, value);
+					target.__relationships__.set(key, current);
+				} else if (value instanceof collection.model) {
+					current.model = value;
+					target.__relationships__.set(key, current);
+				} else if (value === null) {
+					delete current.model;
+					delete current.relationship._id;
+				} else {
+					throw TypeError("Invalid value for relationship");
+				}
+			},
+		});
+	};
+}
+
+export function RelationshipSchema<Schema extends z.ZodObject>(
+	model: ModelConstructor<Schema, CollectionModel<Schema>>,
+) {
+	return z
+		.instanceof(mongo.ObjectId)
+		.or(z.instanceof(Relationship))
+		.or(z.instanceof(model))
+		.or(z.null());
+}
+
+export type Ref<T> = T extends MongoCollection<infer _, infer Instance>
+	? Instance | mongo.ObjectId | null
+	: never;
 
 class MongoCollection<
 	Schema extends z.ZodObject,
@@ -49,38 +145,86 @@ class MongoCollection<
 		}
 	}
 
+	/**
+	 * Retrieves the name of the collection.
+	 *
+	 * @returns {string} the name of the collection.
+	 */
 	get collectionName(): string {
 		return this.collection.collectionName;
 	}
 
+	/**
+	 * Retrieves the name of the MongoDB database that this collection is a part of.
+	 *
+	 * @returns {string} the name of the MongoDB database.
+	 */
 	get dbName(): string {
 		return this.collection.dbName;
 	}
 
+	/**
+	 * Retrieves the hint applied to the collection.
+	 *
+	 * @returns {mongo.Hint | undefined} the hint applied to the collection, or undefined if no hint is set.
+	 */
 	get hint(): mongo.Hint | undefined {
 		return this.collection.hint;
 	}
 
+	/**
+	 * Sets the hint for the collection.
+	 *
+	 * @param {mongo.Hint} hint - the hint to set for the collection
+	 */
 	set hint(hint: mongo.Hint) {
 		this.collection.hint = hint;
 	}
 
+	/**
+	 * Retrieves the namespace of the collection.
+	 *
+	 * The namespace is a string that combines the name of the database
+	 * and the name of the collection, separated by a dot.
+	 *
+	 * @returns {string} the namespace of the collection.
+	 */
 	get namespace(): string {
 		return this.collection.namespace;
 	}
 
+	/**
+	 * Retrieves the read concern applied to the collection.
+	 *
+	 * @returns {mongo.ReadConcern | undefined} the read concern applied to the collection, or undefined if no read concern is set.
+	 */
 	get readConcern(): mongo.ReadConcern | undefined {
 		return this.collection.readConcern;
 	}
 
+	/**
+	 * Retrieves the read preference applied to the collection.
+	 *
+	 * @returns {mongo.ReadPreference | undefined} the read preference applied to the collection, or undefined if no read preference is set.
+	 */
 	get readPreference(): mongo.ReadPreference | undefined {
 		return this.collection.readPreference;
 	}
 
+	/**
+	 * Retrieves the timeout in milliseconds for the collection.
+	 *
+	 * @returns {number | undefined} the timeout in milliseconds for the collection, or undefined if no timeout is set.
+	 */
 	get timeoutMS(): number | undefined {
 		return this.collection.timeoutMS;
 	}
 
+	/**
+	 * Retrieves the write concern applied to the collection.
+	 *
+	 * @returns {mongo.WriteConcern | undefined} the write concern applied to the collection, or undefined if no write concern is set.
+	 */
 	get writeConcern(): mongo.WriteConcern | undefined {
 		return this.collection.writeConcern;
 	}
@@ -111,6 +255,12 @@ class MongoCollection<
 		search?: Data | QueryPredicate<Schema, Instance>,
 		options?: CountOptions,
 	): Promise<number> {
+		if (search === undefined) {
+			return this.collection.estimatedDocumentCount(options as any);
+		}
+		if (typeof search === "object") {
+			return this.collection.countDocuments(encode(search) as any, options as any);
+		}
 		return this.find(search, options).count();
 	}
 
@@ -307,7 +457,7 @@ class MongoCollection<
 	 */
 	find(
 		search?: Data | QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): FindCursor<Schema, Instance> {
 		return new FindCursor(this, search, options);
 	}
@@ -325,7 +475,7 @@ class MongoCollection<
 	/**
 	 * Fetches multiple models from this collection.
 	 * @param filter {Data} The filter to find models to fetch.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {FindOptions<Schema>} Optional setting for this command.
 	 * @return {Promise<Array<Instance> | null>} The models matching the filter,
 	 * or null if none matches.
 	 * @note
@@ -336,12 +486,12 @@ class MongoCollection<
 	 */
 	async findMany(
 		filter: Data,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): Promise<Array<Instance> | null>;
 	/**
 	 * Fetches multiple models from this collection.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find models to fetch.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {FindOptions<Schema>} Optional setting for this command.
 	 * @return {Promise<Array<Instance> | null>} The models matching the filter,
 	 * or null if none matches.
 	 * @example
@@ -349,11 +499,11 @@ class MongoCollection<
 	 */
 	async findMany(
 		predicate: QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): Promise<Array<Instance> | null>;
 	async findMany(
 		search?: Data | QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): Promise<Array<Instance> | null> {
 		return this.find(search, options).toArray();
 	}
@@ -361,7 +511,7 @@ class MongoCollection<
 	/**
 	 * Fetches the model with the matching `mongo.ObjectId`.
 	 * @param id {mongo.ObjectId} The id of the model to find.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {FindOneOptions<Schema>} Optional setting for this command.
 	 * @return {Instance | null} The model with the matching `mongo.ObjectId`,
 	 * or null if `mongo.ObjectId` does not exist in collection.
 	 * @example
@@ -369,12 +519,12 @@ class MongoCollection<
 	 */
 	async findOne(
 		id: mongo.ObjectId,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<Instance | null>;
 	/**
 	 * Fetches the first model to match the filter.
 	 * @param filter {Data} The filter to find the model to fetch.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {FindOneOptions<Schema>} Optional setting for this command.
 	 * @return {Instance | null} The model to match the filter, or `null` if no model matches.
 	 * @note
 	 * Filter matches only models with the exact key-value pairs passed.
@@ -382,29 +532,38 @@ class MongoCollection<
 	 * @example
 	 * const user = await Users.findOne({ email: 'email@email.com' });
 	 */
-	async findOne(filter: Data, options?: mongo.FindOneOptions): Promise<Instance | null>;
+	async findOne(filter: Data, options?: FindOneOptions<Schema>): Promise<Instance | null>;
 	/**
 	 * Fetches the first model to passes the predicate.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find the model to fetch.
-	 * @param options {mongo.FindOneOptions} Optional setting for this command.
+	 * @param options {FindOneOptions<Schema>} Optional setting for this command.
 	 * @return {Instance | null} The first model to pass the predicate, or `null` if no model passes.
 	 * @example
 	 * const user = await Users.findOne((user) => user.email.endsWith('email.com'));
 	 */
 	async findOne(
 		predicate: QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<Instance | null>;
 	async findOne(
 		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<Instance | null> {
 		if (search instanceof mongo.ObjectId) {
 			const match: mongo.WithId<Data> | null = await this.collection.findOne({
 				_id: search,
 			});
 			if (match === null) return null;
-			return new this.model(decode(match));
+			const model: Instance = new this.model(decode(match));
+			if (options?.populate) {
+				const populate = Array.isArray(options.populate)
+					? options.populate
+					: [options.populate];
+				if (populate.length) {
+					await Promise.all(populate.map((key) => model.populate(key)));
+				}
+			}
+			return model;
 		}
 
 		const model: IteratorResult<Instance> = await this.find(search, options).next();
@@ -486,7 +645,7 @@ class MongoCollection<
 	 * Transform models that match the query.
 	 * @param filter {Data} The key-value pairs to query for.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
-	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @param options {FindOptions<Schema> | undefined} Optional settings for this operation.
 	 * @return {Promise<Array<T> | null>} An array of the transformed data, or null if no models match query.
 	 * @note
 	 * The caller is responsible for ensuring there is enough memory to store the results.
@@ -512,7 +671,7 @@ class MongoCollection<
 	 * Transform models that match the query.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find matching models.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
-	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @param options {FindOptions<Schema> | undefined} Optional settings for this operation.
 	 * @return {Promise<Array<T> | null>} An array of the transformed data, or null if no models match query.
 	 * @note
 	 * The caller is responsible for ensuring there is enough memory to store the results.
@@ -532,12 +691,12 @@ class MongoCollection<
 	async transformMany<T>(
 		predicate: QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): Promise<Array<T> | null>;
 	async transformMany<T>(
 		search: Data | QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 	): Promise<Array<T> | null> {
 		return this.find(search, options).map(transform).toArray();
 	}
@@ -546,7 +705,7 @@ class MongoCollection<
 	 * Transform a model that matches the query.
 	 * @param id {mongo.ObjectId} The id of the model to transform.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
-	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @param options {FindOneOptions<Schema> | undefined} Optional settings for this operation.
 	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
 	 * @note
 	 * Filter matches only models with the exact key-value pairs passed.
@@ -564,13 +723,13 @@ class MongoCollection<
 	async transformOne<T>(
 		id: mongo.ObjectId,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<T | null>;
 	/**
 	 * Transform a model that matches the query.
 	 * @param filter {Data} The key-value pairs to query for.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
-	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @param options {FindOneOptions<Schema> | undefined} Optional settings for this operation.
 	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
 	 * @note
 	 * Filter matches only models with the exact key-value pairs passed.
@@ -588,13 +747,13 @@ class MongoCollection<
 	async transformOne<T>(
 		filter: Data,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<T | null>;
 	/**
 	 * Transform a model that matches the query.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find a match with.
 	 * @param transform {(model: Instance) => MaybePromise<R>} The transformation function.
-	 * @param options {mongo.FindOptions | undefined} Optional settings for this operation.
+	 * @param options {FindOneOptions<Schema> | undefined} Optional settings for this operation.
 	 * @return {Promise<T | null>} The transformed data, or null if no match is found.
 	 * @note
 	 * This method uses a FindCursor to query for models.
@@ -609,12 +768,12 @@ class MongoCollection<
 	async transformOne<T>(
 		predicate: QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<T | null>;
 	async transformOne<T>(
 		search: mongo.ObjectId | Data | QueryPredicate<Schema, Instance>,
 		transform: (model: Instance) => MaybePromise<T>,
-		options?: mongo.FindOneOptions,
+		options?: FindOneOptions<Schema>,
 	): Promise<T | null> {
 		let model: Instance | null = null;
 		if (search instanceof mongo.ObjectId) {
@@ -634,7 +793,7 @@ class MongoCollection<
 	 * Update multiple models in this collection.
 	 * @param filter {Data} The filter to find the models to update.
 	 * @param update {Partial<z.infer<Schema>>} The partial record containing the updated key-values.
-	 * @param options {mongo.FindOptions} Optional settings for this operation.
+	 * @param options {mongo.FindOneAndUpdateOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
 	 * or `errors` object if no models match or conflict in unique properties.
 	 * @note
@@ -648,13 +807,13 @@ class MongoCollection<
 	async updateMany(
 		filter: Data,
 		update: Partial<z.infer<Schema>>,
-		options?: mongo.FindOptions,
+		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	/**
 	 * Update multiple models in this collection.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find models to update.
 	 * @param update {Partial<z.infer<Schema>>} The partial record containing the updated key-values.
-	 * @param options {mongo.FindOptions} Optional settings for this operation.
+	 * @param options {mongo.FindOneAndUpdateOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
 	 * or `errors` object if no models match or conflict in unique properties.
 	 * @note
@@ -665,13 +824,13 @@ class MongoCollection<
 	async updateMany(
 		predicate: QueryPredicate<Schema, Instance>,
 		update: Partial<z.infer<Schema>>,
-		options?: mongo.FindOptions,
+		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	/**
 	 * Update multiple models in this collection.
 	 * @param filter {Data} The filter to find models to update.
 	 * @param updater {ModelUpdater<Schema, Instance>} A function passed to update each model.
-	 * @param options {mongo.FindOptions} Optional settings for this operation.
+	 * @param options {mongo.FindOneAndUpdateOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
 	 * or `errors` object if no models match or conflict in unique properties.
 	 * @note
@@ -680,20 +839,23 @@ class MongoCollection<
 	 * @note
 	 * Updates containing unique properties will be rejected.
 	 * @example
-	 * const updated = await Users.updateMany({ email: 'email@email.com' }, (user) => {
-	 *      user.email = 'newemail@email.com'
-	 * })
+	 * const updated = await Users.updateMany(
+	 *     { email: 'email@email.com' }, 
+	 *     (user) => {
+	 *         user.email = 'newemail@email.com'
+	 *     }
+	 * )
 	 */
 	async updateMany(
 		filter: Data,
 		updater: ModelUpdater<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	/**
 	 * Update multiple models in this collection.
 	 * @param predicate {QueryPredicate<Schema, Instance>} The predicate to find models to update.
 	 * @param updater {ModelUpdater<Schema, Instance>} A function passed to update each model.
-	 * @param options {mongo.FindOptions} Optional settings for this operation.
+	 * @param options {mongo.FindOneAndUpdateOptions} Optional settings for this operation.
 	 * @return {Promise<UpdateManyResult<Schema, Instance>>} The updated models if any are updated,
 	 * or `errors` object if no models match or conflict in unique properties.
 	 * @note
@@ -706,12 +868,12 @@ class MongoCollection<
 	async updateMany(
 		predicate: QueryPredicate<Schema, Instance>,
 		updater: ModelUpdater<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateManyResult<Schema, Instance>>;
 	async updateMany(
 		search: Data | QueryPredicate<Schema, Instance>,
 		update: Partial<z.infer<Schema>> | ModelUpdater<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: mongo.FindOneAndUpdateOptions,
 	): Promise<UpdateManyResult<Schema, Instance>> {
 		if (typeof update === "object") {
 			const parsed = await this.schema.partial().safeParseAsync(update);
@@ -719,20 +881,47 @@ class MongoCollection<
 		}
 
 		const models: Array<Instance> = [];
-		for await (const model of this.find(search, options)) {
-			if (typeof update === "function") {
-				await update(model);
+		for await (const before of this.find(search, options)) {
+			const after = new this.model(before.toJSON());
 
-				const parsed = await this.schema.safeParseAsync(model.toJSON());
-				if (!parsed.success) {
-					return this.#schemaFailure(parsed.error);
-				}
+			if (typeof update === "function") {
+				await update(after);
 			} else {
-				Object.assign(model, update);
+				Object.assign(after, update);
 			}
 
-			const result = await this.updateOne(model._id, model.toJSON());
-			if (result.acknowledged) models.push(model);
+			const parsed = await this.schema.safeParseAsync(after.toJSON());
+			if (!parsed.success) {
+				return this.#schemaFailure(parsed.error);
+			}
+
+			const diff = changes("", before.toJSON(), after.toJSON()).parse;
+
+			if (Object.keys(diff).length === 0) {
+				return { acknowledged: false, errors: { general: "No Updates to Make" } };
+			}
+
+			try {
+				const updated = await this.collection.findOneAndUpdate(
+					{ _id: before._id },
+					diff,
+					{
+						...options,
+						returnDocument: "after",
+					},
+				);
+				if (updated !== null) {
+					models.push(new this.model(updated))
+				}
+			} catch (error: any) {
+				if (error instanceof mongo.MongoServerError) {
+					if (error.code === 11000) {
+						const key = Object.keys(error.errorResponse.keyPattern).at(0) ?? "";
+						return this.#uniqueFailure(key);
+					}
+				}
+				return { acknowledged: false, errors: { general: "Failed to Update Record" } };
+			}
 		}
 
 		if (models.length === 0) {
@@ -895,7 +1084,7 @@ class MongoCollection<
 
 		const diff = changes("", before.toJSON(), after.toJSON()).parse;
 
-		if (!Object.keys(diff)) {
+		if (Object.keys(diff).length === 0) {
 			return { acknowledged: false, errors: { general: "No Updates to Make" } };
 		}
 
@@ -967,13 +1156,14 @@ class FindCursor<
 	private readonly _skip: number;
 	private skipped: number = 0;
 	private yielded: number = 0;
-	private readonly options?: mongo.FindOptions | undefined;
+	private readonly options?: FindOptions<Schema> | undefined;
 	private readonly transform?: ((model: Instance) => MaybePromise<T>) | undefined;
+	private readonly _populate: Array<keyof z.infer<Schema>>;
 
 	constructor(
 		collection: MongoCollection<Schema, Instance>,
 		search?: Data | QueryPredicate<Schema, Instance>,
-		options?: mongo.FindOptions,
+		options?: FindOptions<Schema>,
 		transform?: (model: Instance) => MaybePromise<T>,
 	) {
 		this.collection = collection;
@@ -982,11 +1172,17 @@ class FindCursor<
 
 		this._limit = options?.limit ?? Infinity;
 		this._skip = options?.skip ?? 0;
+		this._populate = !options?.populate
+			? []
+			: Array.isArray(options.populate)
+				? options.populate
+				: [options.populate];
 		this.options = options;
 
 		if (options) {
 			delete options.limit;
 			delete options.skip;
+			delete options.populate;
 		}
 
 		this.transform = transform;
@@ -1069,26 +1265,6 @@ class FindCursor<
 	}
 
 	/**
-	 * Iterates over all the documents for this cursor using the iterator, callback pattern.
-	 * If the iterator returns false, iteration will stop.
-	 * @param iterator {(result: T) => MaybePromise<void>} The iteration callback.
-	 * @return {Promise<void>}
-	 * @example
-	 * const cursor = Users.find((user) => user.locked);
-	 * await cursor.forEach(async (user) => {
-	 *     await Users.updateOne(user._id, (user) => {
-	 *         user.attempts = 0;
-	 *     })
-	 * });
-	 */
-	async forEach(iterator: (result: T) => MaybePromise<void | boolean>): Promise<void> {
-		for await (const model of this.clone()) {
-			const result = await iterator(model);
-			if (result === false) break;
-		}
-	}
-
-	/**
 	 * @return {Promise<boolean>} Whether this cursor has a next IterableResult.
 	 */
 	async hasNext(): Promise<boolean> {
@@ -1160,6 +1336,11 @@ class FindCursor<
 			let value: Instance | T = new this.model(data);
 			if (typeof this.search === "function") {
 				if (await this.search(value)) {
+					if (this._populate.length) {
+						await Promise.all(
+							this._populate.map((key) => (value as Instance).populate(key)),
+						);
+					}
 					if (this.transform) value = await this.transform(value);
 					if (value === null) return { done: true, value: undefined };
 
@@ -1175,6 +1356,11 @@ class FindCursor<
 					next = await this.cursor.next();
 				}
 			} else {
+				if (this._populate.length) {
+					await Promise.all(
+						this._populate.map((key) => (value as Instance).populate(key)),
+					);
+				}
 				if (this.transform) value = await this.transform(value);
 				if (value === null) return { done: true, value: undefined };
 
@@ -1192,9 +1378,33 @@ class FindCursor<
 		return { done: true, value: undefined };
 	}
 
-	async return(model?: Instance): Promise<IteratorResult<Instance>> {
-		await this.close();
-		return { done: true, value: model };
+	/**
+	 * Set the population of this cursor.
+	 * @param key The key of the relationship to populate.
+	 * @returns A new FindCursor that will yield models with the populated relationship.
+	 * @example
+	 * const cursor = Posts.find().populate("author");
+	 */
+	populate<K extends keyof z.infer<Schema>>(key: K): FindCursor<Schema, Instance, T>;
+	/**
+	 * Set the population of this cursor.
+	 * @param keys The keys of the relationships to populate.
+	 * @returns A new FindCursor that will yield models with the populated relationships.
+	 * @example
+	 * const cursor = Posts.find().populate(["author", "comments"]);
+	 */
+	populate<K extends keyof z.infer<Schema>>(
+		keys: Array<K>,
+	): FindCursor<Schema, Instance, T>;
+	populate<K extends keyof z.infer<Schema>>(
+		populate: K | Array<K>,
+	): FindCursor<Schema, Instance, T> {
+		return new FindCursor(
+			this.collection,
+			this.search,
+			{ ...this.options, populate },
+			this.transform,
+		);
 	}
 
 	/**

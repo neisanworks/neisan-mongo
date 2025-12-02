@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import * as mongo from "mongodb";
 import * as z from "zod/v4";
 import type { Data } from "../types";
-import { MongoClient } from "./client";
+import { MongoClient, type Ref, RelationshipSchema, relationship } from "./client";
 import { Model } from "./model";
 
 const UserSchema = z.object({
@@ -39,6 +39,12 @@ class UserModel extends Model<UserSchema> {
 	}
 }
 
+const PostSchema = z.object({
+	title: z.string(),
+	author: RelationshipSchema<UserSchema>(UserModel),
+});
+type PostSchema = typeof PostSchema;
+
 const client = new MongoClient(process.env.MONGO_CONNECTION_STRING ?? "", {
 	maxPoolSize: 150,
 });
@@ -50,8 +56,26 @@ const Users = db.collection({
 	uniques: ["email"],
 });
 
+class PostModel extends Model<PostSchema> {
+	title!: string;
+	@relationship(Users)
+	author: Ref<typeof Users> = null;
+
+	constructor(data: Data) {
+		super();
+		this.hydrate(data);
+	}
+}
+
+const Posts = db.collection({
+	name: "posts",
+	schema: PostSchema,
+	model: PostModel,
+});
+
 test("Collection Usage", async () => {
 	await Users.drop();
+	await Posts.drop();
 	const inserted = await Users.insert({
 		email: "email@email.com",
 		password: "$omePassw0rd",
@@ -62,6 +86,17 @@ test("Collection Usage", async () => {
 	expect(inserted.model).toBeInstanceOf(UserModel);
 	expect(inserted.model._id).toBeInstanceOf(mongo.ObjectId);
 	expect(inserted.model.authenticated("$omePassw0rd")).toBeTrue();
+
+	const insertedPost = await Posts.insert({
+		title: "A Post",
+		author: inserted.model._id,
+	});
+	expect(insertedPost.acknowledged).toBeTrue();
+	if (!insertedPost.acknowledged) return;
+	expect(insertedPost.model.author).toEqual(inserted.model._id as any);
+	await insertedPost.model.populate("author");
+	expect(insertedPost.model).toBeInstanceOf(PostModel);
+	expect(insertedPost.model.author).toBeInstanceOf(UserModel);
 
 	expect(await Users.count()).toEqual(1);
 
@@ -128,9 +163,4 @@ test("Collection Usage", async () => {
 		const found = await Users.deleteOne({ email: `newemail${i}@email.com` });
 		expect(found).toBeInstanceOf(UserModel);
 	}
-
-	await Users.insert({ email: "someemail@email.com", password: "$omePassw0rd" });
-	console.log(
-		await Users.insert({ email: "someemail@email.com", password: "$omePassw0rd" }),
-	);
 });
