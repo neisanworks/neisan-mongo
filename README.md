@@ -93,7 +93,7 @@ const client = new MongoClient("<connection-string>", {
     maxPoolSize: 150,
 });
 
-const db = client.db("<collection-name>");
+const db = client.db("<database-name>");
 
 const Users = db.collection({
     name: "users",
@@ -705,8 +705,9 @@ This creates a typed link between models and enables simple, explicit population
 import { 
     type Data, 
     Model, 
-    relationship, 
-    RelationshipSchema
+    type ToOneRef,
+	ToOneRelationship,
+	ToOneSchema,
 } from "@neisanworks/neisan-mongo";
 import * as bcrypt from "bcrypt";
 import * as z from "zod/v4";
@@ -752,7 +753,7 @@ export const UserSchema = z.object({
 	username: UsernameSchema,
 	password: z.coerce.string().length(60, "User Password Not Hashed"),
 	attempts: z.number().min(0, "User Auth Attempts Must Be GTE 0").default(0),
-    profile: RelationshipSchema<ProfileSchema>(ProfileModel)
+    profile: ToOneSchema<ProfileSchema>(ProfileModel)
 });
 export type UserSchema = typeof UserSchema;
 
@@ -761,8 +762,8 @@ class UserModel extends Model<UserSchema> {
     username!: string;
     password!: string;
     attempts!: number;
-    @relationship(Profiles)
-    profile: Ref<typeof Profiles> = null;
+    @toOne(Profiles)
+    profile: ToOneRef<typeof Profiles> = null;
 
     constructor(data: Data) {
 		super();
@@ -786,9 +787,9 @@ export const Users = db.collection({
 })
 ```
 
-**Note:** `Ref<T>` is defined as `T["model"] | mongo.ObjectId | null`
+**Note:** `ToOneRef<T>` is defined as `T["model"] | mongo.ObjectId | null`
 
-**Note:** `RelationshipSchema(Model)` creates a Zod-compatible type allowing `ObjectId`, `Model`, or `null`.
+**Note:** `ToOneSchema(Model)` creates a Zod-compatible type allowing `ObjectId`, `Model`, or `null`.
 
 ### 2. Populate the Relationship
 
@@ -888,9 +889,11 @@ const login = command(LoginFormSchema, async ({ identifier, password }) => {
 | Re-populate the same key                | Reuses cached model unless invalidated                           |
 | Using collection `{ populate }` option    | Populates the relationship automatically before returning models |
 
-**Note:** Circular relationships (e.g. a User having a `manager: Ref<UserModel>`) are supported; populate lazily to prevent recursion.
+**Note:** Circular relationships (e.g. a User having a `manager: ToOneRef<UserModel>`) are supported; populate lazily to prevent recursion.
 
 **Note:** Populated fields are full model instances, not plain objects.
+
+**Note:** Support for One-to-Many and Many-to-Many is in progress.
 
 ---
 

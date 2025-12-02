@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import * as mongo from "mongodb";
 import * as z from "zod/v4";
 import type { Data } from "../types";
-import { MongoClient, type Ref, RelationshipSchema, relationship } from "./client";
+import {
+	MongoClient,
+	type ToOneRef,
+	ToOneSchema,
+	toOne,
+} from "./client";
 import { Model } from "./model";
 
 const UserSchema = z.object({
@@ -41,7 +46,7 @@ class UserModel extends Model<UserSchema> {
 
 const PostSchema = z.object({
 	title: z.string(),
-	author: RelationshipSchema<UserSchema>(UserModel),
+	author: ToOneSchema<UserSchema>(UserModel),
 });
 type PostSchema = typeof PostSchema;
 
@@ -58,8 +63,8 @@ const Users = db.collection({
 
 class PostModel extends Model<PostSchema> {
 	title!: string;
-	@relationship(Users)
-	author: Ref<typeof Users> = null;
+	@toOne(Users)
+	author: ToOneRef<typeof Users> = null;
 
 	constructor(data: Data) {
 		super();

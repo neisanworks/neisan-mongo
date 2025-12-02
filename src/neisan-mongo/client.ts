@@ -21,8 +21,22 @@ import type {
 	UpdateResult,
 } from "../types.js";
 import { changes, decode, encode } from "../utils.js";
+import { EnhancedMap } from "../data-structures.js";
 
-class Relationship<
+class Relationship<Schema extends z.ZodObject, Instance extends CollectionModel<Schema>> {
+	constructor(
+		public readonly collection: MongoCollection<Schema, Instance>,
+		public _id?: mongo.ObjectId,
+	) {}
+
+	async populate(): Promise<Instance | null> {
+		if (!this._id) return null;
+		return this.collection.findOne(this._id);
+	}
+}
+
+// One-To-One or Many-To-One Relationships
+export class ToOneRelationship<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
 > {
@@ -37,16 +51,30 @@ class Relationship<
 	}
 }
 
-export type RelationshipRecord<
+export type ToOneRecord<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
 > = {
-	relationship: Relationship<Schema, Instance>;
+	relationship: ToOneRelationship<Schema, Instance>;
 	model?: Instance;
 };
 
+export function ToOneSchema<Schema extends z.ZodObject>(
+	model: ModelConstructor<Schema, CollectionModel<Schema>>,
+) {
+	return z
+		.instanceof(mongo.ObjectId)
+		.or(z.instanceof(Relationship))
+		.or(z.instanceof(model))
+		.or(z.null())
+		.default(null);
+}
 
-export function relationship<
+export type ToOneRef<T> = T extends MongoCollection<infer _, infer Instance>
+	? Instance | mongo.ObjectId | null
+	: never;
+
+export function toOne<
 	Schema extends z.ZodObject,
 	Instance extends CollectionModel<Schema>,
 >(collection: MongoCollection<Schema, Instance>) {
@@ -54,38 +82,40 @@ export function relationship<
 		assert(typeof target === "object", "target should be an object");
 		assert(typeof key === "string", "key should be a string");
 
-		if (!("__relationships__" in target) || !(target.__relationships__ instanceof Map)) {
-			target.__relationships__ = new Map();
+		if (
+			!("__relationships__" in target) ||
+			!(target.__relationships__ instanceof EnhancedMap)
+		) {
+			target.__relationships__ = new EnhancedMap();
 		}
 		assert(
-			target.__relationships__ instanceof Map,
+			target.__relationships__ instanceof EnhancedMap,
 			"target.__relationships__ should be a Map",
 		);
 
 		target.__relationships__.set(key, {
-			relationship: new Relationship(collection),
+			relationship: new ToOneRelationship(collection),
 		});
 
 		Object.defineProperty(target, key, {
 			configurable: false,
 			enumerable: true,
 			get: () => {
-				const value: RelationshipRecord<Schema, Instance> =
+				const value: ToOneRecord<Schema, Instance> =
 					target.__relationships__.get(key);
 				if (!value) return null;
 				return value.model ?? value.relationship._id ?? null;
 			},
 			set: (value: unknown) => {
-				const current: RelationshipRecord<Schema, Instance> =
-					target.__relationships__.get(key);
+				const current: ToOneRecord<Schema, Instance> = target.__relationships__.get(key);
 				assert(typeof current === "object", "current should be an object");
 				assert(
-					current.relationship instanceof Relationship,
-					"current.relationship should be a Relationship",
+					current.relationship instanceof ToOneRelationship,
+					"current.relationship should be a ToOneRelationship",
 				);
 
 				if (value instanceof mongo.ObjectId) {
-					current.relationship = new Relationship(collection, value);
+					current.relationship = new ToOneRelationship(collection, value);
 					target.__relationships__.set(key, current);
 				} else if (value instanceof collection.model) {
 					current.model = value;
@@ -101,19 +131,76 @@ export function relationship<
 	};
 }
 
-export function RelationshipSchema<Schema extends z.ZodObject>(
+// One-To-Many or Many-To-Many Relationships
+export class ToManyRelationship<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+> {
+	constructor(
+		public readonly collection: MongoCollection<Schema, Instance>,
+		public _ids: Array<mongo.ObjectId> = [],
+	) {}
+
+	populate(options?: mongo.FindOptions): Promise<Array<Instance> | null> {
+		return this.collection.find({ _id: { $in: this._ids } }, options).toArray();
+	}
+}
+
+export type ToManyRecord<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+> = {
+	relationship: ToManyRelationship<Schema, Instance>;
+	models: Array<Instance>;
+};
+
+export function ToManySchema<Schema extends z.ZodObject>(
 	model: ModelConstructor<Schema, CollectionModel<Schema>>,
 ) {
 	return z
-		.instanceof(mongo.ObjectId)
-		.or(z.instanceof(Relationship))
-		.or(z.instanceof(model))
-		.or(z.null());
+		.array(z.instanceof(mongo.ObjectId))
+		.or(z.array(z.instanceof(model)))
+		.default([]);
 }
 
-export type Ref<T> = T extends MongoCollection<infer _, infer Instance>
-	? Instance | mongo.ObjectId | null
+export type ToManyRef<T> = T extends MongoCollection<infer _, infer Instance>
+	? Array<Instance> | Array<mongo.ObjectId>
 	: never;
+
+export function toMany<
+	Schema extends z.ZodObject,
+	Instance extends CollectionModel<Schema>,
+>(collection: MongoCollection<Schema, Instance>) {
+	return (target: any, key: any) => {
+		assert(typeof target === "object", "target should be an object");
+		assert(typeof key === "string", "key should be a string");
+
+		if (
+			!("__relationships__" in target) ||
+			!(target.__relationships__ instanceof EnhancedMap)
+		) {
+			target.__relationships__ = new EnhancedMap();
+		}
+		assert(
+			target.__relationships__ instanceof EnhancedMap,
+			"target.__relationships__ should be a EnhancedMap",
+		);
+
+		target.__relationships__.set(key, {
+			relationship: new ToManyRelationship(collection),
+		});
+
+		Object.defineProperty(target, key, {
+			configurable: false,
+			enumerable: true,
+			get: () => {
+				const value: ToManyRecord<Schema, Instance> = target.__relationships__.get(key);
+				if (!value) return [];
+				return value.models ?? value.relationship._ids;
+			},
+		});
+	};
+}
 
 class MongoCollection<
 	Schema extends z.ZodObject,
@@ -631,6 +718,7 @@ class MongoCollection<
 				model: new this.model({ ...parse.data, _id: result.insertedId }),
 			};
 		} catch (error: any) {
+			console.error(error)
 			if (error instanceof mongo.MongoServerError) {
 				if (error.code === 11000) {
 					const key = Object.keys(error.errorResponse.keyPattern).at(0) ?? "";
@@ -840,7 +928,7 @@ class MongoCollection<
 	 * Updates containing unique properties will be rejected.
 	 * @example
 	 * const updated = await Users.updateMany(
-	 *     { email: 'email@email.com' }, 
+	 *     { email: 'email@email.com' },
 	 *     (user) => {
 	 *         user.email = 'newemail@email.com'
 	 *     }
@@ -911,7 +999,7 @@ class MongoCollection<
 					},
 				);
 				if (updated !== null) {
-					models.push(new this.model(updated))
+					models.push(new this.model(updated));
 				}
 			} catch (error: any) {
 				if (error instanceof mongo.MongoServerError) {
